@@ -114,8 +114,8 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   const originalSetHeader = res.setHeader;
   
-  // @ts-ignore - Overriding the setHeader method to prevent duplicate CORS headers
-  res.setHeader = function(name, value) {
+  // Override the setHeader method using explicit type assertion to preserve type safety
+  (res as Response).setHeader = function(name: string, value: any): Response {
     const lowerCaseName = name.toLowerCase();
     
     // If it's a CORS header and it's already set, don't set it again
