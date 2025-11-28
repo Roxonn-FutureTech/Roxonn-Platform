@@ -314,7 +314,7 @@ app.use('/api/auth/', authLimiter);
 // Stricter rate limiting for blockchain operations
 const blockchainLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 200, // Limit each IP to 20 blockchain requests per window
+  max: 20, // Limit each IP to 20 blockchain requests per window
   standardHeaders: true,
   legacyHeaders: false,
   message: 'Too many blockchain operations, please try again after 5 minutes',
