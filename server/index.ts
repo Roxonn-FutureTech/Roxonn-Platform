@@ -176,7 +176,7 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') {
     log(`Processing OPTIONS request for path: ${req.path}`, 'cors-debug');
     // Ensure CORS headers are set for OPTIONS requests even without origin
-    if (!req.headers.origin && req.path.includes('/vscode/') || req.path.includes('/api/vscode/')) {
+    if (!req.headers.origin && (req.path.includes('/vscode/') || req.path.includes('/api/vscode/'))) {
       log(`Setting CORS headers for VSCode OPTIONS request without origin`, 'cors-debug');
       res.header('Access-Control-Allow-Origin', '*');
       res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
