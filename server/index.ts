@@ -94,8 +94,8 @@ app.use((req, res, next) => {
   
   // Original end override
   const originalEnd = res.end;
-  // @ts-ignore - Overriding the end method to log headers
-  res.end = function(chunk, encoding, callback) {
+  // Overriding the end method to log headers with type assertion
+  (res as Response & { end: typeof res.end }).end = function(chunk?: any, encoding?: any, callback?: any) {
     // Log all headers before sending response
     const headers = res.getHeaders();
     log(`[FINAL] Response headers for ${req.method} ${req.path}: ${JSON.stringify(headers)}`, 'cors-debug');
