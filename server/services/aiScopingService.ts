@@ -38,7 +38,8 @@ function getSafeFilePath(filePath: string): string | null {
   const filename = path.basename(normalizedPath);
 
   // Validate filename doesn't contain path traversal characters
-  if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+  // Check for any forbidden sequences (.., /, \) in filename using a single regex
+  if (!filename || /(\.\.|[\/\\])/.test(filename)) {
     return null;
   }
 
