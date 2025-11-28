@@ -93,7 +93,7 @@ export class DatabaseStorage implements IStorage {
       });
       return user;
     } catch (error) {
-      console.error(`Error getting user by username ${JSON.stringify(username)}:`, error);
+      console.error("Error getting user by username: %s", username, error);
       throw error;
     }
   }
