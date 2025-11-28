@@ -88,8 +88,14 @@ export async function processDocument(filePath: string): Promise<any> {
     const documentContent = await fs.readFile(safePath, 'utf-8');
 
     // These would be loaded from config, which gets them from .env
-    const project = config.gcpProjectId || 'your-gcp-project-id'; // Placeholder
-    const location = config.gcpLocation || 'us-central1'; // Placeholder
+    if (!config.gcpProjectId) {
+      throw new Error('Missing required configuration: GCP Project ID (config.gcpProjectId)');
+    }
+    const project = config.gcpProjectId;
+    if (!config.gcpLocation) {
+      throw new Error('Missing required configuration: GCP Location (config.gcpLocation)');
+    }
+    const location = config.gcpLocation;
     const publisher = 'google';
     const model = 'gemini-1.5-flash-001';
 
