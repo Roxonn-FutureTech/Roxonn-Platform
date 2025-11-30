@@ -15,6 +15,14 @@ import {
 import { log } from '../utils';
 import rateLimit from 'express-rate-limit';
 
+// Custom error class for business logic errors
+class BusinessError extends Error {
+  constructor(message: string, public statusCode: number = 400) {
+    super(message);
+    this.name = 'BusinessError';
+  }
+}
+
 // Rate limiters for promotional bounties endpoints
 const submissionRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -491,17 +499,17 @@ router.post('/submissions', requireAuth, submissionRateLimiter, async (req: Requ
       );
       
       if (!lockedBountyResult.rows || lockedBountyResult.rows.length === 0) {
-        throw new Error('Bounty not found');
+        throw new BusinessError('Bounty not found', 404);
       }
       
       const lockedBounty = lockedBountyResult.rows[0] as any;
       
       if (lockedBounty.status !== 'ACTIVE') {
-        throw new Error('Bounty is not active');
+        throw new BusinessError('Bounty is not active', 400);
       }
       
       if (lockedBounty.expires_at && new Date(lockedBounty.expires_at) < new Date()) {
-        throw new Error('Bounty has expired');
+        throw new BusinessError('Bounty has expired', 400);
       }
       
       // Check max submissions with locked bounty (within transaction)
@@ -513,7 +521,7 @@ router.post('/submissions', requireAuth, submissionRateLimiter, async (req: Requ
         
         const count = submissionCountResult[0]?.count || 0;
         if (count >= lockedBounty.max_submissions) {
-          throw new Error('Maximum submissions reached for this bounty');
+          throw new BusinessError('Maximum submissions reached for this bounty', 400);
         }
       }
       
@@ -532,6 +540,9 @@ router.post('/submissions', requireAuth, submissionRateLimiter, async (req: Requ
   } catch (error: any) {
     if (error instanceof ZodError) {
       return res.status(400).json({ error: 'Validation error', details: error.issues });
+    }
+    if (error instanceof BusinessError) {
+      return res.status(error.statusCode).json({ error: error.message });
     }
     log(`Error creating submission: ${error.message}`, 'error');
     res.status(500).json({ error: error.message });
