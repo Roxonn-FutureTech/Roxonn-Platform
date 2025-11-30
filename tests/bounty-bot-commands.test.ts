@@ -228,8 +228,8 @@ describe('Bounty Bot Commands', () => {
       vi.mocked(storage.findRegisteredRepositoryByGithubId).mockResolvedValue(mockRegistration as any);
       vi.mocked(storage.getBountyRequestsByIssue).mockResolvedValue([]);
       vi.mocked(storage.getRepositoryPoolManager).mockResolvedValue(mockPoolManager as any);
-      vi.mocked(blockchain.getRepository).mockResolvedValue(mockRepoDetails as any);
-      vi.mocked(blockchain.allocateIssueReward).mockResolvedValue({
+      vi.spyOn(blockchain, 'getRepository').mockResolvedValue(mockRepoDetails as any);
+      vi.spyOn(blockchain, 'allocateIssueReward').mockResolvedValue({
         transactionHash: '0x123',
         blockNumber: 1000
       });
@@ -332,8 +332,8 @@ describe('Bounty Bot Commands', () => {
       vi.mocked(storage.findRegisteredRepositoryByGithubId).mockResolvedValue(mockRegistration as any);
       vi.mocked(storage.getBountyRequestsByIssue).mockResolvedValue([]);
       vi.mocked(storage.getRepositoryPoolManager).mockResolvedValue(mockPoolManager as any);
-      vi.mocked(blockchain.getRepository).mockResolvedValue(mockRepoDetails as any);
-      vi.mocked(blockchain.allocateIssueReward).mockResolvedValue({
+      vi.spyOn(blockchain, 'getRepository').mockResolvedValue(mockRepoDetails as any);
+      vi.spyOn(blockchain, 'allocateIssueReward').mockResolvedValue({
         transactionHash: '0x123',
         blockNumber: 1000
       });
