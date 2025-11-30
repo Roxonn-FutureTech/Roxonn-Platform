@@ -15,7 +15,7 @@ import { log } from '../utils';
 
 const router = Router();
 
-// Helper to transform bounty data (handle JSON fields)
+// parse JSON fields if they come as strings
 const transformBounty = (bounty: any) => {
   if (bounty.promotionalChannels && typeof bounty.promotionalChannels === 'string') {
     try {
@@ -27,7 +27,6 @@ const transformBounty = (bounty: any) => {
   return bounty;
 };
 
-// Helper to transform submission data
 const transformSubmission = (submission: any) => {
   if (submission.proofLinks && typeof submission.proofLinks === 'string') {
     try {
@@ -39,13 +38,7 @@ const transformSubmission = (submission: any) => {
   return submission;
 };
 
-// ==================== PROJECTS ====================
-
-// ==================== REPOSITORIES ====================
-// Note: Promotional bounties are associated with registered repositories
-// Pool Managers use their existing registered repositories
-
-// Get repositories for current user (Pool Manager)
+// Get user's registered repos
 router.get('/repositories', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
@@ -54,7 +47,6 @@ router.get('/repositories', requireAuth, async (req: Request, res: Response) => 
       return res.status(401).json({ error: 'Authentication required' });
     }
     
-    // Get user's registered repositories
     const repos = await db
       .select()
       .from(registeredRepositories)
@@ -68,9 +60,7 @@ router.get('/repositories', requireAuth, async (req: Request, res: Response) => 
   }
 });
 
-// ==================== BOUNTIES ====================
-
-// Get all bounties (with filters)
+// Get all bounties
 router.get('/bounties', async (req: Request, res: Response) => {
   try {
     const { type, status, repoId, channel } = req.query;
@@ -97,7 +87,6 @@ router.get('/bounties', async (req: Request, res: Response) => {
       .where(whereClause)
       .orderBy(desc(promotionalBounties.createdAt));
     
-    // Transform and filter by channel if needed
     let transformedBounties = results.map((r: any) => ({
       ...transformBounty(r.bounty),
       repository: r.repository,
@@ -116,7 +105,7 @@ router.get('/bounties', async (req: Request, res: Response) => {
   }
 });
 
-// Get promotional bounties specifically
+// Get only promotional bounties
 router.get('/bounties/promotional', async (req: Request, res: Response) => {
   try {
     const { status, channel, repoId } = req.query;
@@ -179,7 +168,6 @@ router.get('/bounties/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Bounty not found' });
     }
     
-    // Get submissions
     const submissions = await db
       .select()
       .from(promotionalSubmissions)
@@ -197,7 +185,7 @@ router.get('/bounties/:id', async (req: Request, res: Response) => {
   }
 });
 
-// Create bounty (Pool Manager only)
+// Create bounty - pool managers only
 router.post('/bounties', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
@@ -206,10 +194,9 @@ router.post('/bounties', requireAuth, async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
     
-    // Validate input
     const validatedData = createPromotionalBountySchema.parse(req.body);
     
-    // Verify repository exists and user is the pool manager (owner)
+    // check repo exists and user owns it
     const [repo] = await db
       .select()
       .from(registeredRepositories)
@@ -224,7 +211,6 @@ router.post('/bounties', requireAuth, async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Not authorized to create bounties for this repository' });
     }
     
-    // Validate promotional-specific fields (per issue requirements)
     if (validatedData.type === 'PROMOTIONAL') {
       if (!validatedData.promotionalChannels || validatedData.promotionalChannels.length === 0) {
         return res.status(400).json({ error: 'Promotional channels are required for promotional bounties' });
@@ -276,7 +262,6 @@ router.patch('/bounties/:id/status', requireAuth, async (req: Request, res: Resp
       return res.status(400).json({ error: 'Invalid status' });
     }
     
-    // Check authorization
     const [bounty] = await db.select().from(promotionalBounties).where(eq(promotionalBounties.id, bountyId)).limit(1);
     
     if (!bounty) {
@@ -306,9 +291,7 @@ router.patch('/bounties/:id/status', requireAuth, async (req: Request, res: Resp
   }
 });
 
-// ==================== SUBMISSIONS ====================
-
-// Get all submissions
+// Submissions
 router.get('/submissions', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
@@ -332,10 +315,9 @@ router.get('/submissions', requireAuth, async (req: Request, res: Response) => {
       conditions.push(eq(promotionalSubmissions.contributorId, parseInt(contributorId as string)));
     }
     
-    // If not admin, filter by user's submissions or their bounties
+    // filter by user's own submissions or bounties they manage (unless admin)
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (user?.role !== 'admin') {
-      // Get user's repositories (as pool manager)
       const userRepos = await db
         .select()
         .from(registeredRepositories)
@@ -395,7 +377,6 @@ router.get('/submissions/:id', requireAuth, async (req: Request, res: Response) 
       return res.status(404).json({ error: 'Submission not found' });
     }
     
-    // Check authorization
     const isContributor = submission.contributorId === userId;
     const [bounty] = await db
       .select()
@@ -433,7 +414,6 @@ router.post('/submissions', requireAuth, async (req: Request, res: Response) => 
     
     const validatedData = createPromotionalSubmissionSchema.parse(req.body);
     
-    // Verify bounty exists and is active
     const [bounty] = await db
       .select()
       .from(promotionalBounties)
@@ -448,7 +428,6 @@ router.post('/submissions', requireAuth, async (req: Request, res: Response) => 
       return res.status(400).json({ error: 'Bounty is not active' });
     }
     
-    // Check max submissions
     if (bounty.maxSubmissions) {
       const submissionCountResult = await db
         .select({ count: sql<number>`count(*)::int` })
@@ -478,7 +457,7 @@ router.post('/submissions', requireAuth, async (req: Request, res: Response) => 
   }
 });
 
-// Review submission (Pool Manager only)
+// Review submission - pool managers only
 router.patch('/submissions/:id/review', requireAuth, async (req: Request, res: Response) => {
   try {
     const submissionId = parseInt(req.params.id);
@@ -504,7 +483,6 @@ router.patch('/submissions/:id/review', requireAuth, async (req: Request, res: R
       return res.status(404).json({ error: 'Submission not found' });
     }
     
-    // Check authorization
     const [bounty] = await db.select().from(promotionalBounties).where(eq(promotionalBounties.id, submission.bountyId)).limit(1);
     const [repo] = await db
       .select()

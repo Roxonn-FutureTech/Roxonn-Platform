@@ -526,13 +526,7 @@ export interface PayoutRequestInfo {
   roxnTxHash?: string;
 }
 
-// =====================================================
-// PROMOTIONAL BOUNTIES TABLES
-// =====================================================
-
-// Promotional bounties table
-// Note: Bounties are associated with registered repositories (not a separate projects table)
-// This follows the requirement: "associated with their registered repository"
+// Promotional bounties - linked to registered repos
 export const promotionalBounties = pgTable("promotional_bounties", {
   id: serial("id").primaryKey(),
   repoId: integer("repo_id").notNull().references(() => registeredRepositories.id, { onDelete: 'cascade' }),
@@ -541,7 +535,6 @@ export const promotionalBounties = pgTable("promotional_bounties", {
   status: text("status", { enum: ["DRAFT", "ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"] }).notNull().default("DRAFT"),
   title: text("title").notNull(),
   description: text("description").notNull(),
-  // Store promotional channels as JSON array (PostgreSQL supports JSONB)
   promotionalChannels: jsonb("promotional_channels").notNull().default([]),
   requiredDeliverable: text("required_deliverable"),
   rewardAmount: decimal("reward_amount", { precision: 18, scale: 8 }).notNull(),
@@ -557,13 +550,11 @@ export const promotionalBounties = pgTable("promotional_bounties", {
 export type PromotionalBounty = typeof promotionalBounties.$inferSelect;
 export type NewPromotionalBounty = typeof promotionalBounties.$inferInsert;
 
-// Submissions table for promotional bounties
 export const promotionalSubmissions = pgTable("promotional_submissions", {
   id: serial("id").primaryKey(),
   bountyId: integer("bounty_id").notNull().references(() => promotionalBounties.id, { onDelete: 'cascade' }),
   contributorId: integer("contributor_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   status: text("status", { enum: ["PENDING", "APPROVED", "REJECTED"] }).notNull().default("PENDING"),
-  // Store proof links as JSON array
   proofLinks: jsonb("proof_links").notNull().default([]),
   description: text("description"),
   reviewedAt: timestamp("reviewed_at", { mode: 'date', withTimezone: true }),
@@ -576,14 +567,13 @@ export const promotionalSubmissions = pgTable("promotional_submissions", {
 export type PromotionalSubmission = typeof promotionalSubmissions.$inferSelect;
 export type NewPromotionalSubmission = typeof promotionalSubmissions.$inferInsert;
 
-// Validation schemas for promotional bounties
 export const createPromotionalBountySchema = z.object({
-  repoId: z.number().int().positive(), // Repository ID from registeredRepositories
+  repoId: z.number().int().positive(),
   type: z.enum(["CODE", "PROMOTIONAL"]).default("PROMOTIONAL"),
   title: z.string().min(1, "Title is required"),
   description: z.string().min(10, "Description must be at least 10 characters"),
   promotionalChannels: z.array(z.string()).min(1, "Select at least one channel"),
-  requiredDeliverable: z.string().min(1, "Required deliverable is required"), // Required per GitHub issue #5 spec
+  requiredDeliverable: z.string().min(1, "Required deliverable is required"),
   rewardAmount: z.string().min(1, "Reward amount is required"),
   rewardType: z.enum(["PER_SUBMISSION", "POOL", "TIERED"]).default("PER_SUBMISSION"),
   maxSubmissions: z.number().int().positive().optional(),
