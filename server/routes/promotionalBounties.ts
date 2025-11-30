@@ -74,7 +74,11 @@ router.get('/bounties', async (req: Request, res: Response) => {
       conditions.push(eq(promotionalBounties.status, status as string));
     }
     if (repoId) {
-      conditions.push(eq(promotionalBounties.repoId, parseInt(repoId as string)));
+      const repoIdNum = parseInt(repoId as string, 10);
+      if (isNaN(repoIdNum)) {
+        return res.status(400).json({ error: 'Invalid repoId parameter' });
+      }
+      conditions.push(eq(promotionalBounties.repoId, repoIdNum));
     }
     
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -120,7 +124,11 @@ router.get('/bounties/promotional', async (req: Request, res: Response) => {
     }
     
     if (repoId) {
-      conditions.push(eq(promotionalBounties.repoId, parseInt(repoId as string)));
+      const repoIdNum = parseInt(repoId as string, 10);
+      if (isNaN(repoIdNum)) {
+        return res.status(400).json({ error: 'Invalid repoId parameter' });
+      }
+      conditions.push(eq(promotionalBounties.repoId, repoIdNum));
     }
     
     const results = await db.select({
