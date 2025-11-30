@@ -585,7 +585,7 @@ export type CreatePromotionalBountyInput = z.infer<typeof createPromotionalBount
 
 export const createPromotionalSubmissionSchema = z.object({
   bountyId: z.number().int().positive(),
-  proofLinks: z.array(z.string().url("Must be a valid URL")).min(1, "At least one proof link is required"),
+  proofLinks: z.array(z.string().url("Must be a valid URL")).min(1, "At least one proof link is required").max(10, "Maximum 10 proof links allowed"),
   description: z.string().optional(),
 });
 

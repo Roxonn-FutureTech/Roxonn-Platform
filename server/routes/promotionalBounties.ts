@@ -13,6 +13,32 @@ import {
   type CreatePromotionalSubmissionInput,
 } from '../../shared/schema';
 import { log } from '../utils';
+import rateLimit from 'express-rate-limit';
+
+// Rate limiters for promotional bounties endpoints
+const submissionRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Max 10 submissions per 15 minutes
+  message: 'Too many submission requests, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const reviewRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Max 20 reviews per 15 minutes
+  message: 'Too many review requests, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const createBountyRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 20, // Max 20 bounties per hour
+  message: 'Too many bounty creation requests, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const router = Router();
 
@@ -198,7 +224,7 @@ router.get('/bounties/:id', async (req: Request, res: Response) => {
 });
 
 // Create bounty - pool managers only
-router.post('/bounties', requireAuth, async (req: Request, res: Response) => {
+router.post('/bounties', requireAuth, createBountyRateLimiter, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
     
@@ -447,7 +473,7 @@ router.get('/submissions/:id', requireAuth, async (req: Request, res: Response) 
 });
 
 // Create submission
-router.post('/submissions', requireAuth, async (req: Request, res: Response) => {
+router.post('/submissions', requireAuth, submissionRateLimiter, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
     
@@ -513,7 +539,7 @@ router.post('/submissions', requireAuth, async (req: Request, res: Response) => 
 });
 
 // Review submission - pool managers only
-router.patch('/submissions/:id/review', requireAuth, async (req: Request, res: Response) => {
+router.patch('/submissions/:id/review', requireAuth, reviewRateLimiter, async (req: Request, res: Response) => {
   try {
     const submissionId = parseInt(req.params.id, 10);
     if (isNaN(submissionId)) {

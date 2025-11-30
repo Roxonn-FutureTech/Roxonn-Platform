@@ -47,7 +47,7 @@ This adds support for promotional bounties as described in [GitHub Issue #5](htt
 ## API Endpoints
 
 ### Repositories
-- `GET /api/promotional/repositories` - Get user's registered repos
+- `GET /api/promotional/repositories` - Get user's registered repos (for creating bounties)
 
 ### Bounties
 - `GET /api/promotional/bounties` - List bounties (filters: type, status, repoId, channel)
