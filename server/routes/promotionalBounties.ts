@@ -484,7 +484,7 @@ router.post('/submissions', requireAuth, submissionRateLimiter, async (req: Requ
     const validatedData = createPromotionalSubmissionSchema.parse(req.body);
     
     // Use transaction with row-level locking to prevent race condition
-    const [newSubmission] = await db.transaction(async (tx) => {
+    const newSubmission = await db.transaction(async (tx) => {
       // Lock the bounty row using FOR UPDATE to prevent concurrent submissions
       const lockedBountyResult = await tx.execute(
         sql`SELECT * FROM promotional_bounties WHERE id = ${validatedData.bountyId} FOR UPDATE LIMIT 1`

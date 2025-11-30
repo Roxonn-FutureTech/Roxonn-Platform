@@ -27,6 +27,10 @@ import ReposExplorerPage from "@/pages/repos-explorer-page";
 import WalletNewPage from "@/pages/wallet-new-page";
 import ContributionsPage from "@/pages/contributions-page";
 import MembershipNewPage from "@/pages/membership-new-page";
+import PromotionalBountiesPage from "@/pages/promotional-bounties-page";
+import PromotionalBountiesCreatePage from "@/pages/promotional-bounties-create-page";
+import PromotionalBountiesDetailPage from "@/pages/promotional-bounties-detail-page";
+import PromotionalBountiesReviewPage from "@/pages/promotional-bounties-review-page";
 import { ContributionDemo } from "@/components/contribution-demo";
 import { ChatWidget } from "@/components/chat-widget";
 import { PoolManagerWelcomeGuide } from "@/components/pool-manager-guide";
@@ -114,6 +118,12 @@ function Router() {
           <Route path="/courses" component={CoursesPage} />
           <Route path="/courses/bolt-new" component={BoltNewCoursePage} />
           <Route path="/courses/v0-dev" component={V0DevCoursePage} />
+
+          {/* Promotional Bounties */}
+          <Route path="/promotional-bounties" component={PromotionalBountiesPage} />
+          <Route path="/promotional-bounties/create" component={PromotionalBountiesCreatePage} />
+          <Route path="/promotional-bounties/:id" component={PromotionalBountiesDetailPage} />
+          <Route path="/promotional-bounties/review" component={PromotionalBountiesReviewPage} />
 
           {/* Dynamic repo route - must come AFTER specific routes */}
           <Route path="/:owner/:repo" component={RepoRoxonnPage} />
