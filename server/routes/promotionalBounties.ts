@@ -73,7 +73,7 @@ router.get('/repositories', requireAuth, async (req: Request, res: Response) => 
 // Get all bounties (with filters)
 router.get('/bounties', async (req: Request, res: Response) => {
   try {
-    const { type, status, projectId, channel } = req.query;
+    const { type, status, repoId, channel } = req.query;
     
     const conditions = [];
     if (type) {
@@ -82,25 +82,25 @@ router.get('/bounties', async (req: Request, res: Response) => {
     if (status) {
       conditions.push(eq(promotionalBounties.status, status as string));
     }
-    if (projectId) {
-      conditions.push(eq(promotionalBounties.projectId, parseInt(projectId as string)));
+    if (repoId) {
+      conditions.push(eq(promotionalBounties.repoId, parseInt(repoId as string)));
     }
     
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
     
     const results = await db.select({
       bounty: promotionalBounties,
-      project: projects,
+      repository: registeredRepositories,
     })
       .from(promotionalBounties)
-      .leftJoin(projects, eq(promotionalBounties.projectId, projects.id))
+      .leftJoin(registeredRepositories, eq(promotionalBounties.repoId, registeredRepositories.id))
       .where(whereClause)
       .orderBy(desc(promotionalBounties.createdAt));
     
     // Transform and filter by channel if needed
     let transformedBounties = results.map((r: any) => ({
       ...transformBounty(r.bounty),
-      project: r.project,
+      repository: r.repository,
     }));
     
     if (channel && type === 'PROMOTIONAL') {
