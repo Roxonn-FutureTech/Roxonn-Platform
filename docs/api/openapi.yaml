@@ -1,83 +1,62 @@
-openapi: 3.0.3
+ openapi: 3.0.3
 info:
   title: Roxonn Platform API
   version: "1.0.0"
   description: >
-    OpenAPI 3.0 specification for the Roxonn Platform.  
+    OpenAPI 3.0 specification for the Roxonn Platform.
     Includes authentication, repositories, wallet, blockchain, subscriptions, and referral endpoints.
-
 servers:
   - url: https://api.roxonn.com
-    description: Production Server
   - url: http://localhost:5000
-    description: Local Development Server
+    description: Local development (use HTTPS in production)
 
-components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: connect.sid
-
-  schemas:
-    ErrorResponse:
-      type: object
-      properties:
-        message:
-          type: string
-          example: Unauthorized
-        code:
-          type: integer
-          example: 401
-
-    User:
-      type: object
-      properties:
-        id:
-          type: integer
-        username:
-          type: string
-        email:
-          type: string
-        role:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-
-    Wallet:
-      type: object
-      properties:
-        address:
-          type: string
-        balance:
-          type: string
-        tokenBalance:
-          type: string
-
-    Repository:
-      type: object
-      properties:
-        id:
-          type: integer
-        name:
-          type: string
-        private:
-          type: boolean
-        url:
-          type: string
+# Default security: require bearerAuth for authenticated endpoints unless overridden
+security:
+  - bearerAuth: []
 
 paths:
+  /api/auth/github:
+    post:
+      summary: Authenticate using GitHub OAuth
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  example: "github-oauth-code"
+      responses:
+        "200":
+          description: Login success, returns JWT token object
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  expires_in:
+                    type: integer
+                    example: 3600
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
 
   /api/auth/user:
     get:
       summary: Get current authenticated user
-      tags: [Authentication]
+      tags:
+        - Authentication
       security:
         - bearerAuth: []
       responses:
@@ -86,53 +65,61 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: '#/components/schemas/User'
         "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /api/auth/github:
-    post:
-      summary: Authenticate using GitHub OAuth
-      tags: [Authentication]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                code:
-                  type: string
-                  example: "github-oauth-code"
-      responses:
-        "200":
-          description: Login success
-        "400":
-          description: Invalid OAuth code
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
 
   /api/repositories:
     get:
       summary: List user repositories
-      tags: [Repositories]
+      tags:
+        - Repositories
       security:
         - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
       responses:
         "200":
-          description: List of repositories
+          description: List of repositories (paginated)
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Repository"
+                type: object
+                properties:
+                  page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  items:
+                    type: array
+                    maxItems: 100
+                    items:
+                      $ref: '#/components/schemas/Repository'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
 
     post:
       summary: Register a repository with Roxonn
-      tags: [Repositories]
+      tags:
+        - Repositories
       security:
         - bearerAuth: []
       requestBody:
@@ -141,18 +128,34 @@ paths:
           application/json:
             schema:
               type: object
+              required: [repoFullName]
               properties:
                 repoFullName:
                   type: string
+                  description: "Owner/name of repo on GitHub"
+                  example: "owner/repo-name"
       responses:
         "201":
           description: Repository registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Repository'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
 
   /api/wallet/info:
     get:
       summary: Get wallet information
-      tags: [Wallet]
+      tags:
+        - Wallet
+      # allow either cookieAuth (legacy) or bearerAuth
       security:
+        - bearerAuth: []
         - cookieAuth: []
       responses:
         "200":
@@ -160,12 +163,17 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Wallet"
+                $ref: '#/components/schemas/Wallet'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
 
   /api/wallet/transfer:
     post:
       summary: Transfer funds to another wallet
-      tags: [Wallet]
+      tags:
+        - Wallet
       security:
         - bearerAuth: []
       requestBody:
@@ -174,19 +182,41 @@ paths:
           application/json:
             schema:
               type: object
+              required: [to, amount]
               properties:
                 to:
                   type: string
+                  description: Recipient wallet address
                 amount:
-                  type: string
+                  type: number
+                  format: double
+                  minimum: 0.00000001
+                  description: Amount in XDC (use numeric type)
       responses:
         "200":
           description: Transfer successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferReceipt'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "402":
+          description: Insufficient funds
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
 
   /api/blockchain/fund:
     post:
       summary: Fund a repository/project
-      tags: [Blockchain]
+      tags:
+        - Blockchain
       security:
         - bearerAuth: []
       requestBody:
@@ -195,19 +225,44 @@ paths:
           application/json:
             schema:
               type: object
+              required: [repositoryId, amount]
               properties:
                 repositoryId:
                   type: integer
                 amount:
-                  type: string
+                  type: number
+                  format: double
+                  minimum: 0.00000001
       responses:
         "200":
           description: Funding transaction complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transactionId:
+                    type: string
+                  status:
+                    type: string
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "402":
+          description: Insufficient funds
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
 
   /api/blockchain/allocate:
     post:
       summary: Allocate bounty to a GitHub issue
-      tags: [Blockchain]
+      tags:
+        - Blockchain
       security:
         - bearerAuth: []
       requestBody:
@@ -216,48 +271,297 @@ paths:
           application/json:
             schema:
               type: object
+              required: [issueNumber, amount]
               properties:
                 issueNumber:
                   type: integer
                 amount:
-                  type: string
+                  type: number
+                  format: double
+                  minimum: 0.00000001
       responses:
         "200":
           description: Bounty allocated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllocationResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
 
   /api/subscription/status:
     get:
       summary: Get subscription status
-      tags: [Subscription]
+      tags:
+        - Subscription
       security:
         - bearerAuth: []
       responses:
         "200":
           description: Subscription info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionStatus'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
 
   /api/referral/code:
     get:
       summary: Get user referral code
-      tags: [Referral]
+      tags:
+        - Referral
       security:
         - bearerAuth: []
       responses:
         "200":
           description: Referral data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferralCode'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
 
   /api/referral/apply:
     post:
       summary: Apply a referral code
-      tags: [Referral]
+      tags:
+        - Referral
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [code]
               properties:
                 code:
                   type: string
       responses:
         "200":
           description: Referral applied successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Standard bearer token authentication using JWT. Clients should store tokens securely and send in the Authorization header: "Bearer {token}".
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: connect.sid
+      description: >
+        Legacy cookie-based session auth. Cookies MUST be Secure, HttpOnly and set SameSite as appropriate in production.
+        Only use cookieAuth over HTTPS in production; prefer bearerAuth for API access.
+
+  responses:
+    Unauthorized:
+      description: Unauthorized - authentication required or invalid token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BadRequest:
+      description: Bad request - validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalServerError:
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      description: Standard error response
+      required: [message, code]
+      properties:
+        message:
+          type: string
+          example: "Unauthorized"
+        code:
+          type: integer
+          example: 401
+        details:
+          type: object
+          additionalProperties: true
+
+    User:
+      type: object
+      description: Authenticated user profile
+      required:
+        - id
+        - username
+        - email
+        - createdAt
+      properties:
+        id:
+          type: integer
+          description: Unique user identifier
+        username:
+          type: string
+          description: GitHub username or platform handle
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [user, admin, moderator]
+        createdAt:
+          type: string
+          format: date-time
+        avatarUrl:
+          type: string
+          format: uri
+
+    Repository:
+      type: object
+      description: Repository metadata
+      required: [id, name, owner, url]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        owner:
+          type: string
+        url:
+          type: string
+          format: uri
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Wallet:
+      type: object
+      description: Wallet information
+      required: [address, balance]
+      properties:
+        address:
+          type: string
+          description: Wallet address
+        balance:
+          type: number
+          format: double
+        currency:
+          type: string
+          example: "XDC"
+        updatedAt:
+          type: string
+          format: date-time
+
+    TransferReceipt:
+      type: object
+      description: Receipt returned after a wallet transfer
+      required: [transactionId, status, amount, to]
+      properties:
+        transactionId:
+          type: string
+        status:
+          type: string
+          enum: [pending, confirmed, failed]
+        amount:
+          type: number
+          format: double
+        to:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        details:
+          type: object
+          additionalProperties: true
+
+    AllocationResponse:
+      type: object
+      properties:
+        transactionId:
+          type: string
+        status:
+          type: string
+        allocatedAmount:
+          type: number
+          format: double
+
+    SubscriptionStatus:
+      type: object
+      properties:
+        plan:
+          type: string
+        status:
+          type: string
+          enum: [active, past_due, canceled, trial]
+        expiresAt:
+          type: string
+          format: date-time
+        trialRemainingDays:
+          type: integer
+
+    ReferralCode:
+      type: object
+      required: [code, createdAt, uses]
+      properties:
+        code:
+          type: string
+        url:
+          type: string
+          format: uri
+        createdAt:
+          type: string
+          format: date-time
+        uses:
+          type: integer
+        maxUses:
+          type: integer
+
+tags:
+  - name: Authentication
+  - name: Repositories
+  - name: Wallet
+  - name: Blockchain
+  - name: Subscription
+  - name: Referral
+  - name: Documentation
