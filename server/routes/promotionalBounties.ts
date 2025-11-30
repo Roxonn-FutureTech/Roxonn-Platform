@@ -274,6 +274,10 @@ router.patch('/bounties/:id/status', requireAuth, async (req: Request, res: Resp
       .where(eq(registeredRepositories.id, bounty.repoId))
       .limit(1);
     
+    if (!repo) {
+      return res.status(404).json({ error: 'Associated repository not found' });
+    }
+    
     if (repo.userId !== userId) {
       return res.status(403).json({ error: 'Not authorized to update this bounty' });
     }
@@ -383,11 +387,21 @@ router.get('/submissions/:id', requireAuth, async (req: Request, res: Response) 
       .from(promotionalBounties)
       .where(eq(promotionalBounties.id, submission.bountyId))
       .limit(1);
+    
+    if (!bounty) {
+      return res.status(404).json({ error: 'Bounty not found' });
+    }
+    
     const [repo] = await db
       .select()
       .from(registeredRepositories)
       .where(eq(registeredRepositories.id, bounty.repoId))
       .limit(1);
+    
+    if (!repo) {
+      return res.status(404).json({ error: 'Repository not found' });
+    }
+    
     const isPoolManager = repo.userId === userId;
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     const isAdmin = user?.role === 'admin';
@@ -426,6 +440,10 @@ router.post('/submissions', requireAuth, async (req: Request, res: Response) => 
     
     if (bounty.status !== 'ACTIVE') {
       return res.status(400).json({ error: 'Bounty is not active' });
+    }
+    
+    if (bounty.expiresAt && new Date(bounty.expiresAt) < new Date()) {
+      return res.status(400).json({ error: 'Bounty has expired' });
     }
     
     if (bounty.maxSubmissions) {
@@ -484,11 +502,21 @@ router.patch('/submissions/:id/review', requireAuth, async (req: Request, res: R
     }
     
     const [bounty] = await db.select().from(promotionalBounties).where(eq(promotionalBounties.id, submission.bountyId)).limit(1);
+    
+    if (!bounty) {
+      return res.status(404).json({ error: 'Bounty not found' });
+    }
+    
     const [repo] = await db
       .select()
       .from(registeredRepositories)
       .where(eq(registeredRepositories.id, bounty.repoId))
       .limit(1);
+    
+    if (!repo) {
+      return res.status(404).json({ error: 'Repository not found' });
+    }
+    
     const isPoolManager = repo.userId === userId;
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     const isAdmin = user?.role === 'admin';
