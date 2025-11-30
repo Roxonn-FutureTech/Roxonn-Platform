@@ -506,8 +506,12 @@ router.patch('/submissions/:id/review', requireAuth, async (req: Request, res: R
     
     // Check authorization
     const [bounty] = await db.select().from(promotionalBounties).where(eq(promotionalBounties.id, submission.bountyId)).limit(1);
-    const [project] = await db.select().from(projects).where(eq(projects.id, bounty.projectId)).limit(1);
-    const isPoolManager = project.poolManagerId === userId;
+    const [repo] = await db
+      .select()
+      .from(registeredRepositories)
+      .where(eq(registeredRepositories.id, bounty.repoId))
+      .limit(1);
+    const isPoolManager = repo.userId === userId;
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     const isAdmin = user?.role === 'admin';
     
