@@ -1,7 +1,8 @@
 import { Router, type Request, Response } from 'express';
 import { db, users } from '../db';
 import { requireAuth } from '../auth';
-import { eq, and, desc, sql, inArray } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray, or } from 'drizzle-orm';
+import { ZodError } from 'zod';
 import {
   registeredRepositories,
   promotionalBounties,
@@ -152,7 +153,10 @@ router.get('/bounties/promotional', async (req: Request, res: Response) => {
 // Get bounty by ID
 router.get('/bounties/:id', async (req: Request, res: Response) => {
   try {
-    const bountyId = parseInt(req.params.id);
+    const bountyId = parseInt(req.params.id, 10);
+    if (isNaN(bountyId)) {
+      return res.status(400).json({ error: 'Invalid bounty ID' });
+    }
     
     const [result] = await db
       .select({
@@ -238,8 +242,8 @@ router.post('/bounties', requireAuth, async (req: Request, res: Response) => {
     
     res.status(201).json(transformBounty(newBounty));
   } catch (error: any) {
-    if (error.name === 'ZodError') {
-      return res.status(400).json({ error: 'Validation error', details: error.errors });
+    if (error instanceof ZodError) {
+      return res.status(400).json({ error: 'Validation error', details: error.issues });
     }
     log(`Error creating bounty: ${error.message}`, 'error');
     res.status(500).json({ error: error.message });
@@ -249,7 +253,10 @@ router.post('/bounties', requireAuth, async (req: Request, res: Response) => {
 // Update bounty status
 router.patch('/bounties/:id/status', requireAuth, async (req: Request, res: Response) => {
   try {
-    const bountyId = parseInt(req.params.id);
+    const bountyId = parseInt(req.params.id, 10);
+    if (isNaN(bountyId)) {
+      return res.status(400).json({ error: 'Invalid bounty ID' });
+    }
     const userId = (req as any).user?.id;
     const { status } = req.body;
     
@@ -308,7 +315,11 @@ router.get('/submissions', requireAuth, async (req: Request, res: Response) => {
     const conditions = [];
     
     if (bountyId) {
-      conditions.push(eq(promotionalSubmissions.bountyId, parseInt(bountyId as string)));
+      const bountyIdNum = parseInt(bountyId as string, 10);
+      if (isNaN(bountyIdNum)) {
+        return res.status(400).json({ error: 'Invalid bountyId parameter' });
+      }
+      conditions.push(eq(promotionalSubmissions.bountyId, bountyIdNum));
     }
     
     if (status) {
@@ -316,7 +327,11 @@ router.get('/submissions', requireAuth, async (req: Request, res: Response) => {
     }
     
     if (contributorId) {
-      conditions.push(eq(promotionalSubmissions.contributorId, parseInt(contributorId as string)));
+      const contributorIdNum = parseInt(contributorId as string, 10);
+      if (isNaN(contributorIdNum)) {
+        return res.status(400).json({ error: 'Invalid contributorId parameter' });
+      }
+      conditions.push(eq(promotionalSubmissions.contributorId, contributorIdNum));
     }
     
     // filter by user's own submissions or bounties they manage (unless admin)
@@ -337,7 +352,10 @@ router.get('/submissions', requireAuth, async (req: Request, res: Response) => {
         
         if (bountyIds.length > 0) {
           conditions.push(
-            sql`${promotionalSubmissions.contributorId} = ${userId} OR ${promotionalSubmissions.bountyId} IN ${sql.raw(`(${bountyIds.join(',')})`)}`
+            or(
+              eq(promotionalSubmissions.contributorId, userId),
+              inArray(promotionalSubmissions.bountyId, bountyIds)
+            )
           );
         } else {
           conditions.push(eq(promotionalSubmissions.contributorId, userId));
@@ -364,7 +382,10 @@ router.get('/submissions', requireAuth, async (req: Request, res: Response) => {
 // Get submission by ID
 router.get('/submissions/:id', requireAuth, async (req: Request, res: Response) => {
   try {
-    const submissionId = parseInt(req.params.id);
+    const submissionId = parseInt(req.params.id, 10);
+    if (isNaN(submissionId)) {
+      return res.status(400).json({ error: 'Invalid submission ID' });
+    }
     const userId = (req as any).user?.id;
     
     if (!userId) {
@@ -467,8 +488,8 @@ router.post('/submissions', requireAuth, async (req: Request, res: Response) => 
     
     res.status(201).json(transformSubmission(newSubmission));
   } catch (error: any) {
-    if (error.name === 'ZodError') {
-      return res.status(400).json({ error: 'Validation error', details: error.errors });
+    if (error instanceof ZodError) {
+      return res.status(400).json({ error: 'Validation error', details: error.issues });
     }
     log(`Error creating submission: ${error.message}`, 'error');
     res.status(500).json({ error: error.message });
@@ -478,7 +499,10 @@ router.post('/submissions', requireAuth, async (req: Request, res: Response) => 
 // Review submission - pool managers only
 router.patch('/submissions/:id/review', requireAuth, async (req: Request, res: Response) => {
   try {
-    const submissionId = parseInt(req.params.id);
+    const submissionId = parseInt(req.params.id, 10);
+    if (isNaN(submissionId)) {
+      return res.status(400).json({ error: 'Invalid submission ID' });
+    }
     const userId = (req as any).user?.id;
     const { status, reviewNotes } = req.body;
     
