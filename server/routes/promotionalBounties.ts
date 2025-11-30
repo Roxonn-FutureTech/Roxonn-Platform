@@ -457,42 +457,50 @@ router.post('/submissions', requireAuth, async (req: Request, res: Response) => 
     
     const validatedData = createPromotionalSubmissionSchema.parse(req.body);
     
-    const [bounty] = await db
-      .select()
-      .from(promotionalBounties)
-      .where(eq(promotionalBounties.id, validatedData.bountyId))
-      .limit(1);
-    
-    if (!bounty) {
-      return res.status(404).json({ error: 'Bounty not found' });
-    }
-    
-    if (bounty.status !== 'ACTIVE') {
-      return res.status(400).json({ error: 'Bounty is not active' });
-    }
-    
-    if (bounty.expiresAt && new Date(bounty.expiresAt) < new Date()) {
-      return res.status(400).json({ error: 'Bounty has expired' });
-    }
-    
-    if (bounty.maxSubmissions) {
-      const submissionCountResult = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(promotionalSubmissions)
-        .where(eq(promotionalSubmissions.bountyId, validatedData.bountyId));
+    // Use transaction with row-level locking to prevent race condition
+    const [newSubmission] = await db.transaction(async (tx) => {
+      // Lock the bounty row using FOR UPDATE to prevent concurrent submissions
+      const lockedBountyResult = await tx.execute(
+        sql`SELECT * FROM promotional_bounties WHERE id = ${validatedData.bountyId} FOR UPDATE LIMIT 1`
+      );
       
-      const count = submissionCountResult[0]?.count || 0;
-      if (count >= bounty.maxSubmissions) {
-        return res.status(400).json({ error: 'Maximum submissions reached for this bounty' });
+      if (!lockedBountyResult.rows || lockedBountyResult.rows.length === 0) {
+        throw new Error('Bounty not found');
       }
-    }
-    
-    const [newSubmission] = await db.insert(promotionalSubmissions).values({
-      bountyId: validatedData.bountyId,
-      contributorId: userId,
-      proofLinks: validatedData.proofLinks,
-      description: validatedData.description,
-    }).returning();
+      
+      const lockedBounty = lockedBountyResult.rows[0] as any;
+      
+      if (lockedBounty.status !== 'ACTIVE') {
+        throw new Error('Bounty is not active');
+      }
+      
+      if (lockedBounty.expires_at && new Date(lockedBounty.expires_at) < new Date()) {
+        throw new Error('Bounty has expired');
+      }
+      
+      // Check max submissions with locked bounty (within transaction)
+      if (lockedBounty.max_submissions) {
+        const submissionCountResult = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(promotionalSubmissions)
+          .where(eq(promotionalSubmissions.bountyId, validatedData.bountyId));
+        
+        const count = submissionCountResult[0]?.count || 0;
+        if (count >= lockedBounty.max_submissions) {
+          throw new Error('Maximum submissions reached for this bounty');
+        }
+      }
+      
+      // Insert submission within transaction
+      const [submission] = await tx.insert(promotionalSubmissions).values({
+        bountyId: validatedData.bountyId,
+        contributorId: userId,
+        proofLinks: validatedData.proofLinks,
+        description: validatedData.description,
+      }).returning();
+      
+      return submission;
+    });
     
     res.status(201).json(transformSubmission(newSubmission));
   } catch (error: any) {
