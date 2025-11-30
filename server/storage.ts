@@ -1,5 +1,5 @@
-import { users, registeredRepositories } from "../shared/schema";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { users, registeredRepositories, bountyRequests } from "../shared/schema";
+import { eq, and, sql, inArray, desc } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -712,6 +712,85 @@ export class DatabaseStorage implements IStorage {
     const balance = user?.promptBalance ?? 0;
     log(`Fetched prompt balance for user ${userId}: ${balance}`, 'prompt-storage');
     return balance;
+  }
+
+  // Bounty request methods
+  async createBountyRequest(data: {
+    githubRepoId: string;
+    githubIssueId: string;
+    githubIssueNumber: number;
+    githubIssueUrl: string;
+    requestedBy: string;
+    suggestedAmount?: string | null;
+    suggestedCurrency?: string | null;
+  }): Promise<any> {
+    try {
+      log(`Creating bounty request for issue ${data.githubIssueNumber} in repo ${data.githubRepoId}`, 'storage');
+      const [request] = await db.insert(bountyRequests).values({
+        githubRepoId: data.githubRepoId,
+        githubIssueId: data.githubIssueId,
+        githubIssueNumber: data.githubIssueNumber,
+        githubIssueUrl: data.githubIssueUrl,
+        requestedBy: data.requestedBy,
+        suggestedAmount: data.suggestedAmount || null,
+        suggestedCurrency: data.suggestedCurrency || null,
+        status: 'pending',
+      }).returning();
+      log(`Bounty request created with ID ${request.id}`, 'storage');
+      return request;
+    } catch (error) {
+      log(`Error creating bounty request: ${error instanceof Error ? error.message : String(error)}`, 'storage');
+      throw error;
+    }
+  }
+
+  async getBountyRequestsByIssue(githubRepoId: string, githubIssueId: string): Promise<any[]> {
+    try {
+      const requests = await db.select()
+        .from(bountyRequests)
+        .where(and(
+          eq(bountyRequests.githubRepoId, githubRepoId),
+          eq(bountyRequests.githubIssueId, githubIssueId)
+        ))
+        .orderBy(desc(bountyRequests.createdAt));
+      return requests;
+    } catch (error) {
+      log(`Error fetching bounty requests: ${error instanceof Error ? error.message : String(error)}`, 'storage');
+      return [];
+    }
+  }
+
+  async getBountyRequest(id: number): Promise<any | null> {
+    try {
+      const [request] = await db.select()
+        .from(bountyRequests)
+        .where(eq(bountyRequests.id, id))
+        .limit(1);
+      return request || null;
+    } catch (error) {
+      log(`Error fetching bounty request: ${error instanceof Error ? error.message : String(error)}`, 'storage');
+      return null;
+    }
+  }
+
+  async updateBountyRequest(id: number, data: {
+    status?: string;
+    processedBy?: number;
+    processedAt?: Date;
+  }): Promise<any | null> {
+    try {
+      const [updated] = await db.update(bountyRequests)
+        .set({
+          ...data,
+          processedAt: data.processedAt || new Date(),
+        })
+        .where(eq(bountyRequests.id, id))
+        .returning();
+      return updated || null;
+    } catch (error) {
+      log(`Error updating bounty request: ${error instanceof Error ? error.message : String(error)}`, 'storage');
+      throw error;
+    }
   }
 
 }
