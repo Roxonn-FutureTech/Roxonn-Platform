@@ -40,6 +40,7 @@ import { sendOtpEmail } from './email';
 import aiScopingAgentRouter from './routes/aiScopingAgent';
 import multiCurrencyWalletRoutes from './routes/multiCurrencyWallet';
 import referralRoutes from './routes/referralRoutes';
+import promotionalBountiesRoutes from './routes/promotionalBounties';
 import { referralService } from './services/referralService';
 import { dispatchTask } from './services/proofOfComputeService';
 import { handleHeartbeat, getNodeStatus, getAllNodeStatuses } from './services/exoNodeService';
@@ -3506,6 +3507,9 @@ export async function registerRoutes(app: Express) {
 
   // Referral system routes
   app.use('/api/referral', referralRoutes);
+  
+  // Promotional Bounties API routes
+  app.use('/api/promotional', promotionalBountiesRoutes);
 
   // --- Proof of Compute V1 Routes ---
   app.post('/api/node/dispatch-task', requireAuth, async (req, res) => {

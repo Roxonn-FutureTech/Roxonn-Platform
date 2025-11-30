@@ -525,3 +525,90 @@ export interface PayoutRequestInfo {
   usdcTxHash?: string;
   roxnTxHash?: string;
 }
+
+// =====================================================
+// PROMOTIONAL BOUNTIES TABLES
+// =====================================================
+
+// Projects table for promotional bounties
+export const projects = pgTable("projects", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  repositoryUrl: text("repository_url"),
+  poolManagerId: integer("pool_manager_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp("created_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
+});
+
+export type Project = typeof projects.$inferSelect;
+export type NewProject = typeof projects.$inferInsert;
+
+// Promotional bounties table
+export const promotionalBounties = pgTable("promotional_bounties", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  creatorId: integer("creator_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  type: text("type", { enum: ["CODE", "PROMOTIONAL"] }).notNull().default("PROMOTIONAL"),
+  status: text("status", { enum: ["DRAFT", "ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"] }).notNull().default("DRAFT"),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  // Store promotional channels as JSON array (PostgreSQL supports JSONB)
+  promotionalChannels: jsonb("promotional_channels").notNull().default([]),
+  requiredDeliverable: text("required_deliverable"),
+  rewardAmount: decimal("reward_amount", { precision: 18, scale: 8 }).notNull(),
+  rewardType: text("reward_type", { enum: ["PER_SUBMISSION", "POOL", "TIERED"] }).notNull().default("PER_SUBMISSION"),
+  maxSubmissions: integer("max_submissions"),
+  totalRewardPool: decimal("total_reward_pool", { precision: 18, scale: 8 }),
+  campaignId: text("campaign_id"),
+  expiresAt: timestamp("expires_at", { mode: 'date', withTimezone: true }),
+  createdAt: timestamp("created_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
+});
+
+export type PromotionalBounty = typeof promotionalBounties.$inferSelect;
+export type NewPromotionalBounty = typeof promotionalBounties.$inferInsert;
+
+// Submissions table for promotional bounties
+export const promotionalSubmissions = pgTable("promotional_submissions", {
+  id: serial("id").primaryKey(),
+  bountyId: integer("bounty_id").notNull().references(() => promotionalBounties.id, { onDelete: 'cascade' }),
+  contributorId: integer("contributor_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: text("status", { enum: ["PENDING", "APPROVED", "REJECTED"] }).notNull().default("PENDING"),
+  // Store proof links as JSON array
+  proofLinks: jsonb("proof_links").notNull().default([]),
+  description: text("description"),
+  reviewedAt: timestamp("reviewed_at", { mode: 'date', withTimezone: true }),
+  reviewedBy: integer("reviewed_by").references(() => users.id),
+  reviewNotes: text("review_notes"),
+  createdAt: timestamp("created_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
+});
+
+export type PromotionalSubmission = typeof promotionalSubmissions.$inferSelect;
+export type NewPromotionalSubmission = typeof promotionalSubmissions.$inferInsert;
+
+// Validation schemas for promotional bounties
+export const createPromotionalBountySchema = z.object({
+  projectId: z.number().int().positive(),
+  type: z.enum(["CODE", "PROMOTIONAL"]).default("PROMOTIONAL"),
+  title: z.string().min(1, "Title is required"),
+  description: z.string().min(10, "Description must be at least 10 characters"),
+  promotionalChannels: z.array(z.string()).min(1, "Select at least one channel"),
+  requiredDeliverable: z.string().optional(),
+  rewardAmount: z.string().min(1, "Reward amount is required"),
+  rewardType: z.enum(["PER_SUBMISSION", "POOL", "TIERED"]).default("PER_SUBMISSION"),
+  maxSubmissions: z.number().int().positive().optional(),
+  totalRewardPool: z.string().optional(),
+  expiresAt: z.string().datetime().optional(),
+});
+
+export type CreatePromotionalBountyInput = z.infer<typeof createPromotionalBountySchema>;
+
+export const createPromotionalSubmissionSchema = z.object({
+  bountyId: z.number().int().positive(),
+  proofLinks: z.array(z.string().url("Must be a valid URL")).min(1, "At least one proof link is required"),
+  description: z.string().optional(),
+});
+
+export type CreatePromotionalSubmissionInput = z.infer<typeof createPromotionalSubmissionSchema>;
