@@ -590,3 +590,22 @@ export const createPromotionalSubmissionSchema = z.object({
 });
 
 export type CreatePromotionalSubmissionInput = z.infer<typeof createPromotionalSubmissionSchema>;
+
+// Bounty requests table for GitHub issue comments
+export const bountyRequests = pgTable("bounty_requests", {
+  id: serial("id").primaryKey(),
+  githubRepoId: text("github_repo_id").notNull(),
+  githubIssueId: text("github_issue_id").notNull(),
+  githubIssueNumber: integer("github_issue_number").notNull(),
+  githubIssueUrl: text("github_issue_url").notNull(),
+  requestedBy: text("requested_by").notNull(), // GitHub username
+  suggestedAmount: text("suggested_amount"), // Optional
+  suggestedCurrency: text("suggested_currency"), // XDC, ROXN, USDC
+  status: text("status").default("pending").notNull(), // pending, approved, rejected
+  createdAt: timestamp("created_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
+  processedAt: timestamp("processed_at", { mode: 'date', withTimezone: true }),
+  processedBy: integer("processed_by").references(() => users.id),
+});
+
+export type BountyRequest = typeof bountyRequests.$inferSelect;
+export type NewBountyRequest = typeof bountyRequests.$inferInsert;

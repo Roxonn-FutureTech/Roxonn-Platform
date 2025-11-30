@@ -9,7 +9,7 @@ import { Webhooks } from "@octokit/webhooks";
 import { ethers } from 'ethers';
 // Import Octokit App Auth
 import { createAppAuth } from "@octokit/auth-app";
-import type { IssueBountyDetails } from "@shared/schema"; // Added import
+import type { IssueBountyDetails } from "@shared/schema";
 
 // Comment out old webhooks instance
 /*
@@ -1146,4 +1146,272 @@ export async function findAppInstallationByName(
   // If we get here, no match was found
   log(`No installation found matching ${appName}`, 'github-app');
   return null;
+}
+
+// --- Bounty Command Parser ---
+export interface BountyCommand {
+  type: 'allocate' | 'request';
+  amount?: string;
+  currency?: 'XDC' | 'ROXN' | 'USDC';
+}
+
+export function parseBountyCommand(comment: string): BountyCommand | null {
+  if (!comment || typeof comment !== 'string') {
+    return null;
+  }
+
+  const patterns = [
+    /\/bounty\s+(\d+(?:\.\d+)?)\s*(XDC|ROXN|USDC)/i,
+    /\/bounty\s*$/i,
+    /@roxonn\s+bounty\s+(\d+(?:\.\d+)?)\s*(XDC|ROXN|USDC)/i,
+    /@roxonn\s+bounty\s*$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = comment.match(pattern);
+    if (match) {
+      const amount = match[1];
+      const currency = match[2]?.toUpperCase() as 'XDC' | 'ROXN' | 'USDC' | undefined;
+      
+      if (amount && currency) {
+        // Validate currency
+        if (!['XDC', 'ROXN', 'USDC'].includes(currency)) {
+          return null;
+        }
+        // Validate amount
+        const amountNum = parseFloat(amount);
+        if (isNaN(amountNum) || amountNum <= 0 || amountNum > 1000000) {
+          return null;
+        }
+        return {
+          type: 'allocate',
+          amount,
+          currency,
+        };
+      } else {
+        // Just /bounty or @roxonn bounty without amount
+        return {
+          type: 'request',
+        };
+      }
+    }
+  }
+  return null;
+}
+
+// --- Post GitHub Comment Helper ---
+export async function postGitHubComment(
+  installationId: string,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  body: string
+): Promise<void> {
+  try {
+    const installationToken = await getInstallationAccessToken(installationId);
+    if (!installationToken) {
+      throw new Error('Could not get installation token');
+    }
+
+    const apiHeaders = getGitHubApiHeaders(installationToken);
+    const commentUrl = buildSafeGitHubUrl('/repos/{owner}/{repo}/issues/{issueNumber}/comments', {
+      owner,
+      repo,
+      issueNumber: String(issueNumber),
+    });
+
+    await axios.post(commentUrl, { body }, { headers: apiHeaders });
+    log(`Posted comment on ${owner}/${repo}#${issueNumber}`, 'bounty-command');
+  } catch (error: any) {
+    log(`Error posting GitHub comment: ${error.message}`, 'bounty-command-ERROR');
+    throw error;
+  }
+}
+
+// --- Bounty Command Handler ---
+export async function handleBountyCommand(
+  payload: any,
+  installationId: string
+): Promise<void> {
+  log(`[handleBountyCommand] Processing bounty command`, 'bounty-command');
+
+  const comment = payload.comment;
+  const issue = payload.issue;
+  const repository = payload.repository;
+  const sender = payload.sender;
+
+  if (!comment || !issue || !repository || !sender) {
+    log('Missing required payload fields', 'bounty-command-ERROR');
+    return;
+  }
+
+  const repoId = String(repository.id);
+  const repoFullName = repository.full_name;
+  const issueNumber = issue.number;
+  const issueId = String(issue.id);
+  const issueUrl = issue.html_url;
+  const commenter = sender.login;
+  const commentBody = comment.body;
+
+  // SSRF Protection
+  const [owner, repo] = (repoFullName || '').split('/');
+  if (!isValidGitHubOwner(owner) || !isValidGitHubRepo(repo)) {
+    log(`Invalid repo format: ${repoFullName}`, 'bounty-command-ERROR');
+    return;
+  }
+
+  // Parse command
+  const command = parseBountyCommand(commentBody);
+  if (!command) {
+    log(`No valid bounty command found in comment`, 'bounty-command');
+    return;
+  }
+
+  log(`Command parsed: type=${command.type}, amount=${command.amount}, currency=${command.currency}`, 'bounty-command');
+
+  // Check repository registration
+  const registration = await storage.findRegisteredRepositoryByGithubId(repoId);
+  if (!registration) {
+    const errorMsg = `❌ **Repository Not Registered**
+
+This repository is not registered on Roxonn. Please register it first at [Roxonn Dashboard](https://app.roxonn.com).
+
+---
+<sub>Powered by [Roxonn](https://app.roxonn.com)</sub>`;
+    await postGitHubComment(installationId, owner, repo, issueNumber, errorMsg);
+    return;
+  }
+
+  // Rate limiting: Check if command was posted recently (1 minute)
+  const recentRequests = await storage.getBountyRequestsByIssue(repoId, issueId);
+  const oneMinuteAgo = new Date(Date.now() - 60000);
+  const recentRequest = recentRequests.find(
+    (req) => req.requestedBy === commenter && new Date(req.createdAt) > oneMinuteAgo
+  );
+
+  if (recentRequest) {
+    const errorMsg = `⏱️ **Rate Limit**
+
+Please wait at least 1 minute between bounty commands on the same issue.
+
+---
+<sub>Powered by [Roxonn](https://app.roxonn.com)</sub>`;
+    await postGitHubComment(installationId, owner, repo, issueNumber, errorMsg);
+    return;
+  }
+
+  // Handle allocation (pool manager only)
+  if (command.type === 'allocate' && command.amount && command.currency) {
+    // Check if commenter is pool manager
+    const poolManager = await storage.getRepositoryPoolManager(registration.id);
+    if (!poolManager || poolManager.githubUsername !== commenter) {
+      const errorMsg = `❌ **Not Authorized**
+
+Only pool managers can allocate bounties. You can request a bounty by commenting \`/bounty\`.
+
+---
+<sub>Powered by [Roxonn](https://app.roxonn.com)</sub>`;
+      await postGitHubComment(installationId, owner, repo, issueNumber, errorMsg);
+      return;
+    }
+
+    // Check pool balance
+    try {
+      const repoDetails = await blockchain.getRepository(registration.id);
+      const poolBalanceStr = command.currency === 'XDC' 
+        ? repoDetails.xdcPoolRewards 
+        : command.currency === 'ROXN'
+        ? repoDetails.roxnPoolRewards
+        : repoDetails.usdcPoolRewards;
+
+      const poolBalance = ethers.parseUnits(poolBalanceStr, command.currency === 'USDC' ? 6 : 18);
+      const amountWei = ethers.parseUnits(command.amount, command.currency === 'USDC' ? 6 : 18);
+      
+      if (poolBalance < amountWei) {
+        const errorMsg = `❌ **Insufficient Funds**
+
+Pool balance: ${ethers.formatUnits(poolBalance, command.currency === 'USDC' ? 6 : 18)} ${command.currency}
+Requested: ${command.amount} ${command.currency}
+
+Please add funds to the pool first.
+
+---
+<sub>Powered by [Roxonn](https://app.roxonn.com)</sub>`;
+        await postGitHubComment(installationId, owner, repo, issueNumber, errorMsg);
+        return;
+      }
+
+      // Allocate bounty on blockchain
+      const result = await blockchain.allocateIssueReward(
+        registration.id,
+        issueNumber,
+        command.amount,
+        command.currency,
+        poolManager.id
+      );
+
+      // Success message
+      const remainingBalance = poolBalance - amountWei;
+      const successMsg = `🎯 **Bounty Allocated!**
+
+| Amount | Status | Pool Balance |
+|--------|--------|--------------|
+| **${command.amount} ${command.currency}** | ✅ Active | ${ethers.formatUnits(remainingBalance, command.currency === 'USDC' ? 6 : 18)} ${command.currency} remaining |
+
+**How to earn this bounty:**
+1. Submit a Pull Request that fixes this issue
+2. Reference this issue in your PR (e.g., "Closes #${issueNumber}")
+3. Once merged, the bounty is automatically sent to your Roxonn wallet
+
+🔗 [View on Roxonn](https://app.roxonn.com/repos/${owner}/${repo})
+
+---
+<sub>Powered by [Roxonn](https://app.roxonn.com) • Earn crypto for open source contributions</sub>`;
+      await postGitHubComment(installationId, owner, repo, issueNumber, successMsg);
+      log(`Bounty allocated: ${command.amount} ${command.currency} for issue #${issueNumber}`, 'bounty-command');
+
+    } catch (error: any) {
+      log(`Error allocating bounty: ${error.message}`, 'bounty-command-ERROR');
+      const errorMsg = `❌ **Allocation Failed**
+
+${error.message}
+
+Please try again or contact support.
+
+---
+<sub>Powered by [Roxonn](https://app.roxonn.com)</sub>`;
+      await postGitHubComment(installationId, owner, repo, issueNumber, errorMsg);
+    }
+
+  } else {
+    // Handle request (anyone can request)
+    await storage.createBountyRequest({
+      githubRepoId: repoId,
+      githubIssueId: issueId,
+      githubIssueNumber: issueNumber,
+      githubIssueUrl: issueUrl,
+      requestedBy: commenter,
+      suggestedAmount: command.amount || null,
+      suggestedCurrency: command.currency || null,
+    });
+
+    const amountText = command.amount && command.currency 
+      ? `**Suggested amount:** ${command.amount} ${command.currency}`
+      : 'No amount suggested';
+
+    const requestMsg = `📋 **Bounty Requested**
+
+@${commenter} has requested a bounty for this issue.
+
+${amountText}
+
+Repository maintainers can approve this request:
+- Comment \`/bounty <amount> <currency>\` to allocate
+- Or visit [Roxonn Dashboard](https://app.roxonn.com/repos/${owner}/${repo})
+
+---
+<sub>Powered by [Roxonn](https://app.roxonn.com)</sub>`;
+    await postGitHubComment(installationId, owner, repo, issueNumber, requestMsg);
+    log(`Bounty request created by ${commenter} for issue #${issueNumber}`, 'bounty-command');
+  }
 }

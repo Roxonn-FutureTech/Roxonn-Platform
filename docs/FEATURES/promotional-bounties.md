@@ -32,8 +32,6 @@ The Promotional Bounties feature extends the Roxonn platform to allow Pool Manag
 
 ## API Endpoints
 
-### Repositories
-- `GET /api/promotional/repositories` - Get user's registered repositories (for creating bounties)
 
 ### Bounties
 - `GET /api/promotional/bounties` - Get all bounties (with filters)
@@ -51,7 +49,6 @@ The Promotional Bounties feature extends the Roxonn platform to allow Pool Manag
 ## Database Schema
 
 ### Tables
-- `promotional_bounties` - Promotional bounties linked to registered repositories, with channels and reward configuration
 - `promotional_submissions` - Submissions with proof links and review status
 
 ## Implementation Details

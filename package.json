@@ -11,6 +11,8 @@
     "db:push": "drizzle-kit push",
     "test": "vitest",
     "test:reward": "vitest tests/reward-feature.test.ts",
+    "test:bounty-bot": "vitest tests/bounty-bot-commands.test.ts",
+    "test:blockchain": "vitest tests/blockchain-integration.test.ts",
     "migrate-secrets": "tsx scripts/migrate-secrets.ts"
   },
   "dependencies": {

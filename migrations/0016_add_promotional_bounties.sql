@@ -54,4 +54,3 @@ CREATE INDEX IF NOT EXISTS idx_promotional_submissions_status ON promotional_sub
 
 -- Composite index for efficient max submissions check
 CREATE INDEX IF NOT EXISTS idx_promotional_submissions_bounty_status ON promotional_submissions(bounty_id, status);
-

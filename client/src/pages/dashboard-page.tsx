@@ -117,19 +117,37 @@ function ActivityItem({
   time,
   amount,
   currency,
+  txHash,
+  repoName,
 }: {
-  type: "reward" | "contribution" | "funding";
+  type: "reward" | "contribution" | "subscription" | "referral";
   title: string;
   description: string;
   time: string;
   amount?: string;
   currency?: string;
+  txHash?: string;
+  repoName?: string;
 }) {
   const icons = {
     reward: <Coins className="w-4 h-4 text-emerald-500" />,
     contribution: <GitPullRequest className="w-4 h-4 text-cyan-500" />,
-    funding: <Wallet className="w-4 h-4 text-violet-500" />,
+    subscription: <Crown className="w-4 h-4 text-yellow-500" />,
+    referral: <Gift className="w-4 h-4 text-violet-500" />,
   };
+
+  // Build link based on activity type
+  const getLink = () => {
+    if (txHash) {
+      return `https://xdcscan.io/tx/${txHash.replace(/^xdc/, "0x")}`;
+    }
+    if (repoName) {
+      return `https://github.com/${repoName}`;
+    }
+    return null;
+  };
+
+  const link = getLink();
 
   return (
     <motion.div
@@ -154,7 +172,13 @@ function ActivityItem({
           {time}
         </p>
       </div>
-      <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+      {link ? (
+        <a href={link} target="_blank" rel="noopener noreferrer">
+          <ExternalLink className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+        </a>
+      ) : (
+        <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+      )}
     </motion.div>
   );
 }
@@ -223,6 +247,20 @@ export default function DashboardPage() {
     enabled: !!user,
   });
 
+  // Fetch real activity data
+  const { data: activityData, isLoading: activityLoading } = useQuery({
+    queryKey: ["/api/user/activity"],
+    queryFn: async () => {
+      const response = await fetch(`${STAGING_API_URL}/api/user/activity?limit=10`, {
+        credentials: "include",
+      });
+      if (!response.ok) return { activities: [] };
+      return response.json();
+    },
+    enabled: !!user,
+    staleTime: 60 * 1000,
+  });
+
   // Format balances
   const xdcBalance = walletInfo?.balance
     ? parseFloat(ethers.formatEther(walletInfo.balance)).toFixed(4)
@@ -232,31 +270,34 @@ export default function DashboardPage() {
     ? parseFloat(ethers.formatEther(walletInfo.tokenBalance)).toFixed(2)
     : "0.00";
 
-  // Mock recent activity (in production, fetch from API)
-  const recentActivity = [
-    {
-      type: "reward" as const,
-      title: "Bounty Completed",
-      description: "Fix authentication bug in user service",
-      time: "2 hours ago",
-      amount: "150",
-      currency: "XDC",
-    },
-    {
-      type: "contribution" as const,
-      title: "PR Merged",
-      description: "Add dark mode support to dashboard",
-      time: "5 hours ago",
-    },
-    {
-      type: "funding" as const,
-      title: "Pool Funded",
-      description: "Added funds to MediSync repository",
-      time: "1 day ago",
-      amount: "500",
-      currency: "XDC",
-    },
-  ];
+  // Helper function to format relative time
+  const formatRelativeTime = (timestamp: string) => {
+    const now = new Date();
+    const date = new Date(timestamp);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? "s" : ""} ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+    if (diffDays < 30) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+    return date.toLocaleDateString();
+  };
+
+  // Transform activity data for display
+  const recentActivity = activityData?.activities?.map((activity: any) => ({
+    id: activity.id,
+    type: activity.type,
+    title: activity.title,
+    description: activity.description,
+    time: formatRelativeTime(activity.timestamp),
+    amount: activity.metadata?.amount,
+    currency: activity.metadata?.currency,
+    txHash: activity.metadata?.txHash,
+    repoName: activity.metadata?.repoName,
+  })) || [];
 
   return (
     <div className="min-h-screen bg-background noise-bg">
@@ -360,18 +401,31 @@ export default function DashboardPage() {
             </div>
 
             <div className="space-y-2">
-              {recentActivity.map((activity, index) => (
-                <ActivityItem key={index} {...activity} />
-              ))}
+              {activityLoading ? (
+                <>
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-start gap-4 p-4 rounded-xl">
+                      <Skeleton className="w-10 h-10 rounded-lg" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-3 w-1/2" />
+                        <Skeleton className="h-3 w-1/4" />
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : recentActivity.length > 0 ? (
+                recentActivity.map((activity: any, index: number) => (
+                  <ActivityItem key={activity.id || index} {...activity} />
+                ))
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Activity className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>No recent activity</p>
+                  <p className="text-sm">Start contributing to see your activity here</p>
+                </div>
+              )}
             </div>
-
-            {recentActivity.length === 0 && (
-              <div className="text-center py-12 text-muted-foreground">
-                <Activity className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No recent activity</p>
-                <p className="text-sm">Start contributing to see your activity here</p>
-              </div>
-            )}
           </motion.div>
 
           {/* Quick Actions - Smaller Column */}

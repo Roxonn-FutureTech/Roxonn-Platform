@@ -1,0 +1,67 @@
+# Feature: Promotional Bounties
+
+## Description
+
+This PR implements the Promotional Bounties feature as described in GitHub Issue #5. It allows Pool Managers to create and manage promotional bounties for their registered repositories, enabling the Roxonn community to participate in marketing and promotional activities.
+
+## What's New
+
+### For Pool Managers
+- Create promotional bounties for registered repositories
+- Define promotional tasks with required channels (Twitter, LinkedIn, Facebook, Instagram, YouTube, Blog, Forum, Other)
+- Set reward amounts and types (PER_SUBMISSION, POOL, TIERED)
+- Manage bounty status (DRAFT, ACTIVE, PAUSED, COMPLETED, CANCELLED)
+- Review and approve/reject submissions with notes
+- Set optional limits (max submissions, expiration dates)
+
+### For Contributors
+- Browse and filter promotional bounties
+- Submit proof links for promotional work
+- Track submission status
+- View review feedback from Pool Managers
+
+## Technical Implementation
+
+### Database Schema
+- promotional_bounties table linked to registeredRepositories
+- promotional_submissions table for contributor submissions
+- JSONB fields for promotional channels and proof links
+
+### API Endpoints
+- GET /api/promotional/repositories - Get user's registered repos
+- GET /api/promotional/bounties - List bounties with filters
+- GET /api/promotional/bounties/promotional - Promotional bounties only
+- GET /api/promotional/bounties/:id - Get bounty details
+- POST /api/promotional/bounties - Create bounty (pool managers)
+- PATCH /api/promotional/bounties/:id/status - Update status
+- GET /api/promotional/submissions - List submissions
+- GET /api/promotional/submissions/:id - Get submission details
+- POST /api/promotional/submissions - Submit proof
+- PATCH /api/promotional/submissions/:id/review - Review submission
+
+### Key Features
+- Input validation with Zod schemas
+- Authorization checks for pool managers
+- Support for many-to-one bounties (multiple submissions)
+- Manual review system on platform
+- Optional max submissions limits
+
+## Files Changed
+
+- shared/schema.ts - Added promotional bounties and submissions tables
+- server/routes/promotionalBounties.ts - New API routes
+- server/routes.ts - Registered promotional routes
+- docs/FEATURES/promotional-bounties-implementation.md - Documentation
+
+## Testing
+
+- Pool managers can create bounties for their repos
+- Contributors can browse and filter bounties
+- Contributors can submit proof links
+- Pool managers can review submissions
+- Authorization checks working correctly
+- Validation in place for all inputs
+
+## Related Issue
+
+Closes #5
