@@ -3,7 +3,7 @@ import { db, users } from '../db';
 import { requireAuth } from '../auth';
 import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import {
-  projects,
+  registeredRepositories,
   promotionalBounties,
   promotionalSubmissions,
   createPromotionalBountySchema,
@@ -41,112 +41,29 @@ const transformSubmission = (submission: any) => {
 
 // ==================== PROJECTS ====================
 
-// ==================== PROJECTS ====================
+// ==================== REPOSITORIES ====================
+// Note: Promotional bounties are associated with registered repositories
+// Pool Managers use their existing registered repositories
 
-// Get all projects
-router.get('/projects', async (req: Request, res: Response) => {
+// Get repositories for current user (Pool Manager)
+router.get('/repositories', requireAuth, async (req: Request, res: Response) => {
   try {
-    const allProjects = await db.select().from(projects).orderBy(desc(projects.createdAt));
-    res.json(allProjects);
-  } catch (error: any) {
-    log(`Error fetching projects: ${error.message}`, 'error');
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get project by ID
-router.get('/projects/:id', async (req: Request, res: Response) => {
-  try {
-    const projectId = parseInt(req.params.id);
-    const project = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+    const userId = (req as any).user?.id;
     
-    if (project.length === 0) {
-      return res.status(404).json({ error: 'Project not found' });
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
     }
     
-    // Get bounties for this project
-    const bounties = await db
+    // Get user's registered repositories
+    const repos = await db
       .select()
-      .from(promotionalBounties)
-      .where(eq(promotionalBounties.projectId, projectId))
-      .orderBy(desc(promotionalBounties.createdAt));
+      .from(registeredRepositories)
+      .where(eq(registeredRepositories.userId, userId))
+      .orderBy(desc(registeredRepositories.registeredAt));
     
-    res.json({ ...project[0], bounties: bounties.map(transformBounty) });
+    res.json(repos);
   } catch (error: any) {
-    log(`Error fetching project: ${error.message}`, 'error');
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Create project (Pool Manager only)
-router.post('/projects', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const { name, description, repositoryUrl } = req.body;
-    const userId = (req as any).user?.id;
-    
-    if (!userId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-    
-    // Check if user is pool manager
-    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    if (!user || user.role !== 'poolmanager') {
-      return res.status(403).json({ error: 'Only Pool Managers can create projects' });
-    }
-    
-    if (!name) {
-      return res.status(400).json({ error: 'Project name is required' });
-    }
-    
-    const [newProject] = await db.insert(projects).values({
-      name,
-      description,
-      repositoryUrl,
-      poolManagerId: userId,
-    }).returning();
-    
-    res.status(201).json(newProject);
-  } catch (error: any) {
-    log(`Error creating project: ${error.message}`, 'error');
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Update project
-router.put('/projects/:id', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const projectId = parseInt(req.params.id);
-    const userId = (req as any).user?.id;
-    const { name, description, repositoryUrl } = req.body;
-    
-    if (!userId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-    
-    // Check ownership
-    const existingProject = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
-    if (existingProject.length === 0) {
-      return res.status(404).json({ error: 'Project not found' });
-    }
-    
-    if (existingProject[0].poolManagerId !== userId) {
-      return res.status(403).json({ error: 'Not authorized to update this project' });
-    }
-    
-    const [updatedProject] = await db
-      .update(projects)
-      .set({
-        name,
-        description,
-        repositoryUrl,
-        updatedAt: new Date(),
-      })
-      .where(eq(projects.id, projectId))
-      .returning();
-    
-    res.json(updatedProject);
-  } catch (error: any) {
-    log(`Error updating project: ${error.message}`, 'error');
+    log(`Error fetching repositories: ${error.message}`, 'error');
     res.status(500).json({ error: error.message });
   }
 });
@@ -251,10 +168,10 @@ router.get('/bounties/:id', async (req: Request, res: Response) => {
     const [result] = await db
       .select({
         bounty: promotionalBounties,
-        project: projects,
+        repository: registeredRepositories,
       })
       .from(promotionalBounties)
-      .leftJoin(projects, eq(promotionalBounties.projectId, projects.id))
+      .leftJoin(registeredRepositories, eq(promotionalBounties.repoId, registeredRepositories.id))
       .where(eq(promotionalBounties.id, bountyId))
       .limit(1);
     
@@ -271,7 +188,7 @@ router.get('/bounties/:id', async (req: Request, res: Response) => {
     
     const transformedBounty = transformBounty(result.bounty);
     transformedBounty.submissions = submissions.map(transformSubmission);
-    transformedBounty.project = result.project;
+    transformedBounty.repository = result.repository;
     
     res.json(transformedBounty);
   } catch (error: any) {
@@ -292,18 +209,22 @@ router.post('/bounties', requireAuth, async (req: Request, res: Response) => {
     // Validate input
     const validatedData = createPromotionalBountySchema.parse(req.body);
     
-    // Verify project exists and user is the pool manager
-    const project = await db.select().from(projects).where(eq(projects.id, validatedData.projectId)).limit(1);
+    // Verify repository exists and user is the pool manager (owner)
+    const [repo] = await db
+      .select()
+      .from(registeredRepositories)
+      .where(eq(registeredRepositories.id, validatedData.repoId))
+      .limit(1);
     
-    if (project.length === 0) {
-      return res.status(404).json({ error: 'Project not found' });
+    if (!repo) {
+      return res.status(404).json({ error: 'Repository not found' });
     }
     
-    if (project[0].poolManagerId !== userId) {
-      return res.status(403).json({ error: 'Not authorized to create bounties for this project' });
+    if (repo.userId !== userId) {
+      return res.status(403).json({ error: 'Not authorized to create bounties for this repository' });
     }
     
-    // Validate promotional-specific fields
+    // Validate promotional-specific fields (per issue requirements)
     if (validatedData.type === 'PROMOTIONAL') {
       if (!validatedData.promotionalChannels || validatedData.promotionalChannels.length === 0) {
         return res.status(400).json({ error: 'Promotional channels are required for promotional bounties' });
@@ -314,7 +235,7 @@ router.post('/bounties', requireAuth, async (req: Request, res: Response) => {
     }
     
     const [newBounty] = await db.insert(promotionalBounties).values({
-      projectId: validatedData.projectId,
+      repoId: validatedData.repoId,
       creatorId: userId,
       type: validatedData.type,
       status: 'DRAFT',
@@ -362,9 +283,13 @@ router.patch('/bounties/:id/status', requireAuth, async (req: Request, res: Resp
       return res.status(404).json({ error: 'Bounty not found' });
     }
     
-    const [project] = await db.select().from(projects).where(eq(projects.id, bounty.projectId)).limit(1);
+    const [repo] = await db
+      .select()
+      .from(registeredRepositories)
+      .where(eq(registeredRepositories.id, bounty.repoId))
+      .limit(1);
     
-    if (project.poolManagerId !== userId) {
+    if (repo.userId !== userId) {
       return res.status(403).json({ error: 'Not authorized to update this bounty' });
     }
     
@@ -410,12 +335,18 @@ router.get('/submissions', requireAuth, async (req: Request, res: Response) => {
     // If not admin, filter by user's submissions or their bounties
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (user?.role !== 'admin') {
-      // Get user's bounties
-      const userProjects = await db.select().from(projects).where(eq(projects.poolManagerId, userId));
-      const projectIds = userProjects.map(p => p.id);
+      // Get user's repositories (as pool manager)
+      const userRepos = await db
+        .select()
+        .from(registeredRepositories)
+        .where(eq(registeredRepositories.userId, userId));
+      const repoIds = userRepos.map(r => r.id);
       
-      if (projectIds.length > 0) {
-        const userBounties = await db.select().from(promotionalBounties).where(inArray(promotionalBounties.projectId, projectIds));
+      if (repoIds.length > 0) {
+        const userBounties = await db
+          .select()
+          .from(promotionalBounties)
+          .where(inArray(promotionalBounties.repoId, repoIds));
         const bountyIds = userBounties.map(b => b.id);
         
         if (bountyIds.length > 0) {
@@ -466,9 +397,17 @@ router.get('/submissions/:id', requireAuth, async (req: Request, res: Response) 
     
     // Check authorization
     const isContributor = submission.contributorId === userId;
-    const [bounty] = await db.select().from(promotionalBounties).where(eq(promotionalBounties.id, submission.bountyId)).limit(1);
-    const [project] = await db.select().from(projects).where(eq(projects.id, bounty.projectId)).limit(1);
-    const isPoolManager = project.poolManagerId === userId;
+    const [bounty] = await db
+      .select()
+      .from(promotionalBounties)
+      .where(eq(promotionalBounties.id, submission.bountyId))
+      .limit(1);
+    const [repo] = await db
+      .select()
+      .from(registeredRepositories)
+      .where(eq(registeredRepositories.id, bounty.repoId))
+      .limit(1);
+    const isPoolManager = repo.userId === userId;
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     const isAdmin = user?.role === 'admin';
     

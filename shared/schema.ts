@@ -530,24 +530,12 @@ export interface PayoutRequestInfo {
 // PROMOTIONAL BOUNTIES TABLES
 // =====================================================
 
-// Projects table for promotional bounties
-export const projects = pgTable("projects", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  description: text("description"),
-  repositoryUrl: text("repository_url"),
-  poolManagerId: integer("pool_manager_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: timestamp("created_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
-});
-
-export type Project = typeof projects.$inferSelect;
-export type NewProject = typeof projects.$inferInsert;
-
 // Promotional bounties table
+// Note: Bounties are associated with registered repositories (not a separate projects table)
+// This follows the requirement: "associated with their registered repository"
 export const promotionalBounties = pgTable("promotional_bounties", {
   id: serial("id").primaryKey(),
-  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  repoId: integer("repo_id").notNull().references(() => registeredRepositories.id, { onDelete: 'cascade' }),
   creatorId: integer("creator_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   type: text("type", { enum: ["CODE", "PROMOTIONAL"] }).notNull().default("PROMOTIONAL"),
   status: text("status", { enum: ["DRAFT", "ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"] }).notNull().default("DRAFT"),
@@ -590,12 +578,12 @@ export type NewPromotionalSubmission = typeof promotionalSubmissions.$inferInser
 
 // Validation schemas for promotional bounties
 export const createPromotionalBountySchema = z.object({
-  projectId: z.number().int().positive(),
+  repoId: z.number().int().positive(), // Repository ID from registeredRepositories
   type: z.enum(["CODE", "PROMOTIONAL"]).default("PROMOTIONAL"),
   title: z.string().min(1, "Title is required"),
   description: z.string().min(10, "Description must be at least 10 characters"),
   promotionalChannels: z.array(z.string()).min(1, "Select at least one channel"),
-  requiredDeliverable: z.string().optional(),
+  requiredDeliverable: z.string().min(1, "Required deliverable is required"), // Required per GitHub issue #5 spec
   rewardAmount: z.string().min(1, "Reward amount is required"),
   rewardType: z.enum(["PER_SUBMISSION", "POOL", "TIERED"]).default("PER_SUBMISSION"),
   maxSubmissions: z.number().int().positive().optional(),
