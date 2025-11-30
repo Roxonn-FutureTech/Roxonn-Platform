@@ -1303,7 +1303,7 @@ Please wait at least 1 minute between bounty commands on the same issue.
   // Handle allocation (pool manager only)
   if (command.type === 'allocate' && command.amount && command.currency) {
     // Check if commenter is pool manager
-    const poolManager = await storage.getRepositoryPoolManager(parseInt(repoId));
+    const poolManager = await storage.getRepositoryPoolManager(registration.id);
     if (!poolManager || poolManager.githubUsername !== commenter) {
       const errorMsg = `❌ **Not Authorized**
 
@@ -1317,7 +1317,7 @@ Only pool managers can allocate bounties. You can request a bounty by commenting
 
     // Check pool balance
     try {
-      const repoDetails = await blockchain.getRepository(parseInt(repoId));
+      const repoDetails = await blockchain.getRepository(registration.id);
       const poolBalanceStr = command.currency === 'XDC' 
         ? repoDetails.xdcPoolRewards 
         : command.currency === 'ROXN'
@@ -1343,7 +1343,7 @@ Please add funds to the pool first.
 
       // Allocate bounty on blockchain
       const result = await blockchain.allocateIssueReward(
-        parseInt(repoId),
+        registration.id,
         issueNumber,
         command.amount,
         command.currency,
