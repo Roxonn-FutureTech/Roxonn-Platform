@@ -233,7 +233,6 @@ describe('Bounty Bot Commands', () => {
         transactionHash: '0x123',
         blockNumber: 1000
       });
-      vi.mocked(postGitHubComment).mockResolvedValue();
 
       await handleBountyCommand(mockPayload, mockInstallationId);
 
@@ -337,7 +336,6 @@ describe('Bounty Bot Commands', () => {
         transactionHash: '0x123',
         blockNumber: 1000
       });
-      vi.mocked(postGitHubComment).mockResolvedValue();
 
       await handleBountyCommand(usdcPayload, mockInstallationId);
 
