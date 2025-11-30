@@ -158,27 +158,27 @@ router.get('/bounties', async (req: Request, res: Response) => {
   try {
     const { type, status, projectId, channel } = req.query;
     
-    let query = db.select({
+    const conditions = [];
+    if (type) {
+      conditions.push(eq(promotionalBounties.type, type as string));
+    }
+    if (status) {
+      conditions.push(eq(promotionalBounties.status, status as string));
+    }
+    if (projectId) {
+      conditions.push(eq(promotionalBounties.projectId, parseInt(projectId as string)));
+    }
+    
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    
+    const results = await db.select({
       bounty: promotionalBounties,
       project: projects,
     })
       .from(promotionalBounties)
       .leftJoin(projects, eq(promotionalBounties.projectId, projects.id))
+      .where(whereClause)
       .orderBy(desc(promotionalBounties.createdAt));
-    
-    if (type) {
-      query = query.where(eq(promotionalBounties.type, type as string));
-    }
-    
-    if (status) {
-      query = query.where(eq(promotionalBounties.status, status as string));
-    }
-    
-    if (projectId) {
-      query = query.where(eq(promotionalBounties.projectId, parseInt(projectId as string)));
-    }
-    
-    const results = await query;
     
     // Transform and filter by channel if needed
     let transformedBounties = results.map((r: any) => ({
@@ -204,26 +204,26 @@ router.get('/bounties/promotional', async (req: Request, res: Response) => {
   try {
     const { status, channel, projectId } = req.query;
     
-    let query = db.select({
+    const conditions = [eq(promotionalBounties.type, 'PROMOTIONAL')];
+    
+    if (status) {
+      conditions.push(eq(promotionalBounties.status, status as string));
+    } else {
+      conditions.push(eq(promotionalBounties.status, 'ACTIVE'));
+    }
+    
+    if (projectId) {
+      conditions.push(eq(promotionalBounties.projectId, parseInt(projectId as string)));
+    }
+    
+    const results = await db.select({
       bounty: promotionalBounties,
       project: projects,
     })
       .from(promotionalBounties)
       .leftJoin(projects, eq(promotionalBounties.projectId, projects.id))
-      .where(eq(promotionalBounties.type, 'PROMOTIONAL'))
+      .where(and(...conditions))
       .orderBy(desc(promotionalBounties.createdAt));
-    
-    if (status) {
-      query = query.where(eq(promotionalBounties.status, status as string));
-    } else {
-      query = query.where(eq(promotionalBounties.status, 'ACTIVE'));
-    }
-    
-    if (projectId) {
-      query = query.where(eq(promotionalBounties.projectId, parseInt(projectId as string)));
-    }
-    
-    const results = await query;
     
     let transformedBounties = results.map((r: any) => ({
       ...transformBounty(r.bounty),
@@ -393,18 +393,18 @@ router.get('/submissions', requireAuth, async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
     
-    let query = db.select().from(promotionalSubmissions);
+    const conditions = [];
     
     if (bountyId) {
-      query = query.where(eq(promotionalSubmissions.bountyId, parseInt(bountyId as string)));
+      conditions.push(eq(promotionalSubmissions.bountyId, parseInt(bountyId as string)));
     }
     
     if (status) {
-      query = query.where(eq(promotionalSubmissions.status, status as string));
+      conditions.push(eq(promotionalSubmissions.status, status as string));
     }
     
     if (contributorId) {
-      query = query.where(eq(promotionalSubmissions.contributorId, parseInt(contributorId as string)));
+      conditions.push(eq(promotionalSubmissions.contributorId, parseInt(contributorId as string)));
     }
     
     // If not admin, filter by user's submissions or their bounties
@@ -419,18 +419,23 @@ router.get('/submissions', requireAuth, async (req: Request, res: Response) => {
         const bountyIds = userBounties.map(b => b.id);
         
         if (bountyIds.length > 0) {
-          query = query.where(
+          conditions.push(
             sql`${promotionalSubmissions.contributorId} = ${userId} OR ${promotionalSubmissions.bountyId} IN ${sql.raw(`(${bountyIds.join(',')})`)}`
           );
         } else {
-          query = query.where(eq(promotionalSubmissions.contributorId, userId));
+          conditions.push(eq(promotionalSubmissions.contributorId, userId));
         }
       } else {
-        query = query.where(eq(promotionalSubmissions.contributorId, userId));
+        conditions.push(eq(promotionalSubmissions.contributorId, userId));
       }
     }
     
-    const submissions = await query.orderBy(desc(promotionalSubmissions.createdAt));
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    
+    const submissions = await db.select()
+      .from(promotionalSubmissions)
+      .where(whereClause)
+      .orderBy(desc(promotionalSubmissions.createdAt));
     
     res.json(submissions.map(transformSubmission));
   } catch (error: any) {
