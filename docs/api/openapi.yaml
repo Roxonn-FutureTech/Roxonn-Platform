@@ -1,0 +1,263 @@
+openapi: 3.0.3
+info:
+  title: Roxonn Platform API
+  version: "1.0.0"
+  description: >
+    OpenAPI 3.0 specification for the Roxonn Platform.  
+    Includes authentication, repositories, wallet, blockchain, subscriptions, and referral endpoints.
+
+servers:
+  - url: https://api.roxonn.com
+    description: Production Server
+  - url: http://localhost:5000
+    description: Local Development Server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: connect.sid
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Unauthorized
+        code:
+          type: integer
+          example: 401
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Wallet:
+      type: object
+      properties:
+        address:
+          type: string
+        balance:
+          type: string
+        tokenBalance:
+          type: string
+
+    Repository:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        private:
+          type: boolean
+        url:
+          type: string
+
+paths:
+
+  /api/auth/user:
+    get:
+      summary: Get current authenticated user
+      tags: [Authentication]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/auth/github:
+    post:
+      summary: Authenticate using GitHub OAuth
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                  example: "github-oauth-code"
+      responses:
+        "200":
+          description: Login success
+        "400":
+          description: Invalid OAuth code
+
+  /api/repositories:
+    get:
+      summary: List user repositories
+      tags: [Repositories]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of repositories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Repository"
+
+    post:
+      summary: Register a repository with Roxonn
+      tags: [Repositories]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                repoFullName:
+                  type: string
+      responses:
+        "201":
+          description: Repository registered
+
+  /api/wallet/info:
+    get:
+      summary: Get wallet information
+      tags: [Wallet]
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Wallet details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+
+  /api/wallet/transfer:
+    post:
+      summary: Transfer funds to another wallet
+      tags: [Wallet]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                to:
+                  type: string
+                amount:
+                  type: string
+      responses:
+        "200":
+          description: Transfer successful
+
+  /api/blockchain/fund:
+    post:
+      summary: Fund a repository/project
+      tags: [Blockchain]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                repositoryId:
+                  type: integer
+                amount:
+                  type: string
+      responses:
+        "200":
+          description: Funding transaction complete
+
+  /api/blockchain/allocate:
+    post:
+      summary: Allocate bounty to a GitHub issue
+      tags: [Blockchain]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                issueNumber:
+                  type: integer
+                amount:
+                  type: string
+      responses:
+        "200":
+          description: Bounty allocated
+
+  /api/subscription/status:
+    get:
+      summary: Get subscription status
+      tags: [Subscription]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Subscription info
+
+  /api/referral/code:
+    get:
+      summary: Get user referral code
+      tags: [Referral]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Referral data
+
+  /api/referral/apply:
+    post:
+      summary: Apply a referral code
+      tags: [Referral]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+      responses:
+        "200":
+          description: Referral applied successfully
