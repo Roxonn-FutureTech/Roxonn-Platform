@@ -2,13 +2,13 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger 
+  DialogTrigger
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,14 +16,12 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
 import { useCreatePromotionalSubmission } from "@/hooks/use-promotional-bounties";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  ExternalLink, 
-  Clock, 
-  Users, 
-  Coins, 
+import {
+  ExternalLink,
+  Clock,
+  Users,
+  Coins,
   Calendar,
-  Hash,
-  Link,
   Check,
   X,
   Loader2
@@ -54,20 +52,30 @@ export function PromotionalBountyCard({ bounty }: PromotionalBountyCardProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const { mutate: submitBounty, isPending: isSubmitting } = useCreatePromotionalSubmission();
-  
+
   const [proofLinks, setProofLinks] = useState<string[]>([""]);
   const [description, setDescription] = useState("");
   const [open, setOpen] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validate proof links
-    const validLinks = proofLinks.filter(link => link.trim() !== "");
+
+    // Validate proof links with URL validation
+    const validLinks = proofLinks.filter(link => {
+      const trimmed = link.trim();
+      if (!trimmed) return false;
+      try {
+        new URL(trimmed);
+        return trimmed.startsWith('http://') || trimmed.startsWith('https://');
+      } catch {
+        return false;
+      }
+    });
+
     if (validLinks.length === 0) {
       toast({
         title: "Error",
-        description: "Please provide at least one proof link",
+        description: "Please provide at least one valid URL",
         variant: "destructive",
       });
       return;
@@ -126,24 +134,24 @@ export function PromotionalBountyCard({ bounty }: PromotionalBountyCardProps) {
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <h3 className="text-xl font-bold truncate max-w-[70%]">{bounty.title}</h3>
-          <Badge 
+          <Badge
             variant={bounty.status === 'ACTIVE' && !isExpired ? "default" : "secondary"}
             className={bounty.status === 'ACTIVE' && !isExpired ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" : "bg-muted/50 text-muted-foreground"}
           >
             {isExpired ? 'EXPIRED' : bounty.status}
           </Badge>
         </div>
-        
+
         {bounty.repository && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-            <Hash className="h-4 w-4" />
+            <div className="h-4 w-4" />
             <span>{bounty.repository.githubRepoFullName}</span>
           </div>
         )}
-        
+
         <p className="text-muted-foreground line-clamp-2">{bounty.description}</p>
       </CardHeader>
-      
+
       <CardContent className="pb-3">
         <div className="space-y-3">
           {/* Promotional Channels */}
@@ -157,13 +165,13 @@ export function PromotionalBountyCard({ bounty }: PromotionalBountyCardProps) {
               ))}
             </div>
           </div>
-          
+
           {/* Required Deliverable */}
           <div>
             <h4 className="text-sm font-medium mb-1">Required Deliverable</h4>
             <p className="text-sm">{bounty.requiredDeliverable}</p>
           </div>
-          
+
           {/* Reward Info */}
           <div className="grid grid-cols-2 gap-4 pt-2">
             <div className="flex items-center gap-2">
@@ -173,7 +181,7 @@ export function PromotionalBountyCard({ bounty }: PromotionalBountyCardProps) {
                 <p className="text-xs text-muted-foreground">{bounty.rewardType}</p>
               </div>
             </div>
-            
+
             {bounty.maxSubmissions && (
               <div className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-cyan-500" />
@@ -184,14 +192,14 @@ export function PromotionalBountyCard({ bounty }: PromotionalBountyCardProps) {
               </div>
             )}
           </div>
-          
+
           {/* Time Info */}
           <div className="flex items-center gap-4 text-sm text-muted-foreground pt-2">
             <div className="flex items-center gap-1">
               <Clock className="h-4 w-4" />
               <span>Posted {formatDistanceToNow(new Date(bounty.createdAt), { addSuffix: true })}</span>
             </div>
-            
+
             {bounty.expiresAt && (
               <div className="flex items-center gap-1">
                 <Calendar className="h-4 w-4" />
@@ -201,7 +209,7 @@ export function PromotionalBountyCard({ bounty }: PromotionalBountyCardProps) {
           </div>
         </div>
       </CardContent>
-      
+
       <CardFooter className="flex flex-col gap-3">
         {!user ? (
           <Button variant="outline" className="w-full" asChild>
@@ -228,14 +236,14 @@ export function PromotionalBountyCard({ bounty }: PromotionalBountyCardProps) {
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <Label htmlFor="proof-links">
+                  <Label htmlFor="proof-link-0">
                     Proof Links <span className="text-destructive">*</span>
                   </Label>
                   <div className="space-y-2 mt-2">
                     {proofLinks.map((link, index) => (
                       <div key={index} className="flex gap-2">
                         <Input
-                          id="proof-links"
+                          id={`proof-link-${index}`}
                           value={link}
                           onChange={(e) => updateProofLink(index, e.target.value)}
                           placeholder="https://twitter.com/your_tweet"
@@ -263,7 +271,7 @@ export function PromotionalBountyCard({ bounty }: PromotionalBountyCardProps) {
                     Add More Link
                   </Button>
                 </div>
-                
+
                 <div>
                   <Label htmlFor="description">
                     Description
@@ -276,7 +284,7 @@ export function PromotionalBountyCard({ bounty }: PromotionalBountyCardProps) {
                     rows={3}
                   />
                 </div>
-                
+
                 <div className="flex justify-end gap-2 pt-2">
                   <Button
                     type="button"

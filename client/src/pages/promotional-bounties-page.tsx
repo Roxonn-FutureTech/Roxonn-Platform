@@ -10,18 +10,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
 import {
-  Filter,
   Search,
   TrendingUp,
   Zap,
   Users,
   Coins,
   ExternalLink,
-  GitBranch,
   X
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -149,7 +146,6 @@ export default function PromotionalBountiesPage() {
               {/* Filters */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-muted-foreground ml-1" />
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
                     <SelectTrigger className="w-[140px] bg-background/50 border-border/50">
                       <SelectValue placeholder="Status" />

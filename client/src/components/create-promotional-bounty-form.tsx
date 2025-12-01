@@ -6,16 +6,15 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCreatePromotionalBounty, useUserRepositories } from "@/hooks/use-promotional-bounties";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
-import { Loader2, Plus, ExternalLink, Hash } from "lucide-react";
-import { 
+import { Loader2, Plus } from "lucide-react";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { 
+import {
   Checkbox,
 } from "@/components/ui/checkbox";
 
@@ -161,8 +160,8 @@ export function CreatePromotionalBountyForm({ onCreated }: CreatePromotionalBoun
                 You don't have any registered repositories. Please register a repository first.
               </p>
             ) : (
-              <Select 
-                value={formData.repoId.toString()} 
+              <Select
+                value={formData.repoId.toString()}
                 onValueChange={(value) => setFormData({...formData, repoId: Number(value)})}
               >
                 <SelectTrigger>
@@ -229,18 +228,22 @@ export function CreatePromotionalBountyForm({ onCreated }: CreatePromotionalBoun
             </Label>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {promotionalChannels.map((channel) => (
-                <div 
-                  key={channel} 
+                <div
+                  key={channel}
                   className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-accent cursor-pointer"
-                  onClick={() => handleChannelToggle(channel)}
+                  onClick={(e) => {
+                    // Only toggle if click was not on the checkbox itself
+                    if ((e.target as HTMLElement).closest('button[role="checkbox"]')) return;
+                    handleChannelToggle(channel);
+                  }}
                 >
                   <Checkbox
                     id={`channel-${channel}`}
                     checked={selectedChannels.includes(channel)}
                     onCheckedChange={() => handleChannelToggle(channel)}
                   />
-                  <Label 
-                    htmlFor={`channel-${channel}`} 
+                  <Label
+                    htmlFor={`channel-${channel}`}
                     className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                   >
                     {channel}
@@ -274,9 +277,12 @@ export function CreatePromotionalBountyForm({ onCreated }: CreatePromotionalBoun
               <Label htmlFor="rewardType">
                 Reward Type <span className="text-destructive">*</span>
               </Label>
-              <Select 
-                value={formData.rewardType} 
-                onValueChange={(value) => setFormData({...formData, rewardType: value as any})}
+              <Select
+                value={formData.rewardType}
+                onValueChange={(value) => setFormData({
+                  ...formData,
+                  rewardType: value as "PER_SUBMISSION" | "POOL" | "TIERED"
+                })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select reward type" />

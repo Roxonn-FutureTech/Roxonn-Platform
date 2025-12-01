@@ -6,18 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
 import {
-  Filter,
   Search,
   Plus,
   ExternalLink,
-  Calendar,
   Users,
   Coins,
   TrendingUp,
   X
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,

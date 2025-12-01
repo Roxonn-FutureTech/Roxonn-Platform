@@ -62,7 +62,14 @@ const api = {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch bounties');
+      let errorMessage = 'Failed to fetch bounties';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        // Use default error message if JSON parsing fails
+      }
+      throw new Error(errorMessage);
     }
 
     return response.json();
@@ -84,7 +91,14 @@ const api = {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch promotional bounties');
+      let errorMessage = 'Failed to fetch promotional bounties';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        // Use default error message if JSON parsing fails
+      }
+      throw new Error(errorMessage);
     }
 
     return response.json();
@@ -101,7 +115,14 @@ const api = {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch bounty');
+      let errorMessage = 'Failed to fetch bounty';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        // Use default error message if JSON parsing fails
+      }
+      throw new Error(errorMessage);
     }
 
     return response.json();
@@ -119,8 +140,14 @@ const api = {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to create bounty');
+      let errorMessage = 'Failed to create bounty';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        // Use default error message if JSON parsing fails
+      }
+      throw new Error(errorMessage);
     }
 
     return response.json();
@@ -138,7 +165,14 @@ const api = {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to update bounty status');
+      let errorMessage = 'Failed to update bounty status';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        // Use default error message if JSON parsing fails
+      }
+      throw new Error(errorMessage);
     }
 
     return response.json();
@@ -160,7 +194,14 @@ const api = {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch submissions');
+      let errorMessage = 'Failed to fetch submissions';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        // Use default error message if JSON parsing fails
+      }
+      throw new Error(errorMessage);
     }
 
     return response.json();
@@ -178,8 +219,14 @@ const api = {
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || 'Failed to create submission');
+      let errorMessage = 'Failed to create submission';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        // Use default error message if JSON parsing fails
+      }
+      throw new Error(errorMessage);
     }
 
     return response.json();
@@ -197,7 +244,14 @@ const api = {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to review submission');
+      let errorMessage = 'Failed to review submission';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        // Use default error message if JSON parsing fails
+      }
+      throw new Error(errorMessage);
     }
 
     return response.json();
@@ -214,7 +268,14 @@ const api = {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch submission');
+      let errorMessage = 'Failed to fetch submission';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        // Use default error message if JSON parsing fails
+      }
+      throw new Error(errorMessage);
     }
 
     return response.json();
@@ -248,7 +309,7 @@ export function usePromotionalBounty(id: number) {
 
 export function useCreatePromotionalBounty() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: api.createBounty,
     onSuccess: () => {
@@ -260,7 +321,7 @@ export function useCreatePromotionalBounty() {
 
 export function useUpdateBountyStatus() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) => api.updateBountyStatus(id, status),
     onSuccess: () => {
@@ -280,7 +341,7 @@ export function usePromotionalSubmissions(bountyId?: number, status?: string, co
 
 export function useCreatePromotionalSubmission() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: api.createSubmission,
     onSuccess: () => {
@@ -291,9 +352,9 @@ export function useCreatePromotionalSubmission() {
 
 export function useReviewSubmission() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: ({ id, status, reviewNotes }: { id: number; status: string; reviewNotes?: string }) => 
+    mutationFn: ({ id, status, reviewNotes }: { id: number; status: string; reviewNotes?: string }) =>
       api.reviewSubmission(id, status, reviewNotes),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['promotional-submissions'] });
@@ -312,12 +373,12 @@ export function usePromotionalSubmission(id: number) {
 
 export function useUserRepositories() {
   const { user } = useAuth();
-  
+
   return useQuery({
     queryKey: ['user-repositories'],
     queryFn: async () => {
       if (!user) return [];
-      
+
       const response = await fetch(`${STAGING_API_URL}/api/promotional/repositories`, {
         method: 'GET',
         credentials: 'include',
@@ -328,7 +389,14 @@ export function useUserRepositories() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch repositories');
+        let errorMessage = 'Failed to fetch repositories';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // Use default error message if JSON parsing fails
+        }
+        throw new Error(errorMessage);
       }
 
       return response.json();
