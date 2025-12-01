@@ -20,6 +20,8 @@ import CoursesPage from "@/pages/courses-page";
 import BoltNewCoursePage from "@/pages/bolt-new";
 import V0DevCoursePage from "@/pages/v0-dev";
 import ReferralsPage from "@/pages/referrals-page";
+// Promotional Bounties Pages
+import PromotionalBountiesPage from "@/pages/promotional-bounties-page";
 // Crypto Noir UI Pages
 import LandingPage from "@/pages/landing-page";
 import DashboardPage from "@/pages/dashboard-page";
@@ -114,6 +116,16 @@ function Router() {
           <Route path="/courses" component={CoursesPage} />
           <Route path="/courses/bolt-new" component={BoltNewCoursePage} />
           <Route path="/courses/v0-dev" component={V0DevCoursePage} />
+
+          {/* Promotional Bounties */}
+          <Route path="/promotional-bounties" component={PromotionalBountiesPage} />
+          <Route path="/promotional-bounties/manage">
+            {() => {
+              if (!user) return <Redirect to="/auth" />;
+              if (user.role !== 'poolmanager') return <Redirect to="/promotional-bounties" />;
+              return <MyRepositories />; // Using MyRepositories as entry point for pool managers
+            }}
+          </Route>
 
           {/* Dynamic repo route - must come AFTER specific routes */}
           <Route path="/:owner/:repo" component={RepoRoxonnPage} />

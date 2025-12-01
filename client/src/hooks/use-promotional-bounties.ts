@@ -43,6 +43,26 @@ export interface PromotionalSubmission {
   updatedAt: string;
 }
 
+export type CreatePromotionalBountyInput = Pick<
+  PromotionalBounty,
+  | 'repoId'
+  | 'type'
+  | 'title'
+  | 'description'
+  | 'promotionalChannels'
+  | 'requiredDeliverable'
+  | 'rewardAmount'
+  | 'rewardType'
+  | 'maxSubmissions'
+  | 'totalRewardPool'
+  | 'expiresAt'
+>;
+
+export type CreatePromotionalSubmissionInput = Pick<
+  PromotionalSubmission,
+  'bountyId' | 'proofLinks' | 'description'
+>;
+
 // API functions
 const api = {
   getBounties: async (type?: string, status?: string, repoId?: number, channel?: string) => {
@@ -128,7 +148,7 @@ const api = {
     return response.json();
   },
 
-  createBounty: async (bountyData: Omit<PromotionalBounty, 'id' | 'createdAt' | 'updatedAt' | 'repository' | 'submissions'>) => {
+  createBounty: async (bountyData: CreatePromotionalBountyInput) => {
     const response = await fetch(`${STAGING_API_URL}/api/promotional/bounties`, {
       method: 'POST',
       credentials: 'include',
@@ -207,7 +227,7 @@ const api = {
     return response.json();
   },
 
-  createSubmission: async (submissionData: Omit<PromotionalSubmission, 'id' | 'createdAt' | 'updatedAt' | 'status' | 'reviewedAt' | 'reviewedBy' | 'reviewNotes'>) => {
+  createSubmission: async (submissionData: CreatePromotionalSubmissionInput) => {
     const response = await fetch(`${STAGING_API_URL}/api/promotional/submissions`, {
       method: 'POST',
       credentials: 'include',

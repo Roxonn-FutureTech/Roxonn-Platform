@@ -236,7 +236,7 @@ export default function PromotionalBountiesPage() {
                 ? "No bounties match your search criteria."
                 : "No promotional bounties are currently available."}
             </p>
-            {(searchQuery || statusFilter !== "ACTIVE") && (
+            {(searchQuery || statusFilter !== "ACTIVE" || channelFilter) && (
               <Button variant="outline" onClick={() => {
                 setSearchQuery("");
                 setStatusFilter("ACTIVE");
