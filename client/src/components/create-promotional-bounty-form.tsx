@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/hooks/use-auth";
 import { useCreatePromotionalBounty, useUserRepositories } from "@/hooks/use-promotional-bounties";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plus } from "lucide-react";
@@ -23,7 +24,6 @@ interface CreatePromotionalBountyFormProps {
 }
 
 export function CreatePromotionalBountyForm({ onCreated }: CreatePromotionalBountyFormProps) {
-  const { user } = useAuth();
   const { toast } = useToast();
   const { mutate: createBounty, isPending } = useCreatePromotionalBounty();
   const { data: repositories = [], isLoading: reposLoading } = useUserRepositories();
