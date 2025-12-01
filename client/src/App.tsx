@@ -22,6 +22,7 @@ import V0DevCoursePage from "@/pages/v0-dev";
 import ReferralsPage from "@/pages/referrals-page";
 // Promotional Bounties Pages
 import PromotionalBountiesPage from "@/pages/promotional-bounties-page";
+import PromotionalBountiesManagerPage from "@/pages/promotional-bounties-manager-page";
 // Crypto Noir UI Pages
 import LandingPage from "@/pages/landing-page";
 import DashboardPage from "@/pages/dashboard-page";
@@ -123,7 +124,7 @@ function Router() {
             {() => {
               if (!user) return <Redirect to="/auth" />;
               if (user.role !== 'poolmanager') return <Redirect to="/promotional-bounties" />;
-              return <MyRepositories />; // Using MyRepositories as entry point for pool managers
+              return <PromotionalBountiesManagerPage />;
             }}
           </Route>
 
