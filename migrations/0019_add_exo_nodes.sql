@@ -9,4 +9,6 @@ CREATE TABLE IF NOT EXISTS exo_nodes (
   contribution_count INTEGER DEFAULT 0 NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_exo_nodes_composite ON exo_nodes(user_id, status, wallet_address);
+CREATE INDEX idx_exo_nodes_user_id ON exo_nodes(user_id);
+CREATE INDEX idx_exo_nodes_status ON exo_nodes(status);
+CREATE INDEX idx_exo_nodes_wallet_address ON exo_nodes(wallet_address);
