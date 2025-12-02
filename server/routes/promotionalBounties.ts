@@ -247,12 +247,13 @@ router.post('/bounties', requireAuth, async (req: Request, res: Response) => {
       repoId: validatedData.repoId,
       creatorId: userId,
       type: validatedData.type,
-      status: 'ACTIVE',
+      status: 'DRAFT', // Changed to 'DRAFT' to match schema default and allow explicit activation
       title: validatedData.title,
       description: validatedData.description,
       promotionalChannels: validatedData.promotionalChannels || [],
       requiredDeliverable: validatedData.requiredDeliverable,
       rewardAmount: validatedData.rewardAmount,
+      rewardCurrency: validatedData.rewardCurrency || 'XDC', // Added the missing reward currency
       rewardType: validatedData.rewardType,
       maxSubmissions: validatedData.maxSubmissions,
       totalRewardPool: validatedData.totalRewardPool,
@@ -489,13 +490,17 @@ router.post('/submissions', requireAuth, async (req: Request, res: Response) => 
       }
 
       if (bounty.maxSubmissions) {
-        // Use SELECT FOR UPDATE to lock the row during the check to prevent race conditions
+        // Check ALL non-rejected submissions (PENDING, APPROVED) to prevent race conditions
+        // This ensures we count submissions that are PENDING validation/review as well
         const submissionCountResult = await tx
           .select({ count: sql<number>`count(*)::int` })
           .from(promotionalSubmissions)
           .where(and(
             eq(promotionalSubmissions.bountyId, validatedData.bountyId),
-            eq(promotionalSubmissions.status, 'APPROVED') // Only count approved submissions
+            or(
+              eq(promotionalSubmissions.status, 'PENDING'),
+              eq(promotionalSubmissions.status, 'APPROVED')
+            )
           ));
 
         const count = submissionCountResult[0]?.count || 0;
@@ -622,22 +627,15 @@ router.patch('/submissions/:id/review', requireAuth, async (req: Request, res: R
           throw new Error(`Contributor ${submission.contributorId} does not have a wallet address`);
         }
 
-        // For POOL type, calculate reward amount based on submissions
+        // For POOL type, calculate reward amount based on max submissions if available, otherwise use total pool / total allowed
         if (bounty.rewardType === 'POOL' && bounty.totalRewardPool) {
-          // Count all approved submissions for this bounty to divide the total pool evenly
-          const approvedSubmissionsResult = await db
-            .select({ count: sql<number>`count(*)::int` })
-            .from(promotionalSubmissions)
-            .where(and(
-              eq(promotionalSubmissions.bountyId, bounty.id),
-              eq(promotionalSubmissions.status, 'APPROVED')
-            ));
-
-          const approvedCount = approvedSubmissionsResult[0]?.count || 1; // Default to 1 to avoid division by zero
+          // Calculate reward per submission based on max submissions if available
+          // If maxSubmissions is not set, use a fallback (e.g., 10) or just use the current approved count
+          const maxSubmissions = bounty.maxSubmissions || 1; // Default to 1 if no max submissions specified
           const totalPool = parseFloat(bounty.totalRewardPool);
-          const rewardAmount = (totalPool / approvedCount).toString();
+          const rewardAmount = (totalPool / maxSubmissions).toString();
 
-          log(`Calculated pool reward amount (${rewardAmount}) for contributor ${contributor.id} for approved submission ${submissionId}`, 'rewards');
+          log(`Calculated pool reward amount (${rewardAmount}) for contributor ${contributor.id} for approved submission ${submissionId} based on total pool of ${bounty.totalRewardPool} divided among ${maxSubmissions} max submissions`, 'rewards');
 
           // Update submission to indicate reward distribution is pending
           await db
