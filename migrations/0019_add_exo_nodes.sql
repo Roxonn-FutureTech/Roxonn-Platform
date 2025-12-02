@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS exo_nodes (
   port INTEGER,
   status TEXT DEFAULT 'offline' NOT NULL CHECK (status IN ('online', 'offline')),
   last_seen TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
-  contribution_count INTEGER DEFAULT 0 NOT NULL
+  contribution_count INTEGER DEFAULT 0 NOT NULL,
+  UNIQUE (ip_address, port)
 );
 
 CREATE INDEX idx_exo_nodes_user_id ON exo_nodes(user_id);
