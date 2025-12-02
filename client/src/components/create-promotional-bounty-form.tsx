@@ -35,6 +35,7 @@ export function CreatePromotionalBountyForm({ onCreated }: CreatePromotionalBoun
     promotionalChannels: [] as string[],
     requiredDeliverable: "",
     rewardAmount: "",
+    rewardCurrency: "ROXN" as "XDC" | "ROXN" | "USDC",  // Added reward currency
     rewardType: "PER_SUBMISSION" as const,
     maxSubmissions: undefined as number | undefined,
     totalRewardPool: undefined as string | undefined,
@@ -118,6 +119,7 @@ export function CreatePromotionalBountyForm({ onCreated }: CreatePromotionalBoun
           promotionalChannels: [],
           requiredDeliverable: "",
           rewardAmount: "",
+          rewardCurrency: "ROXN",
           rewardType: "PER_SUBMISSION",
           maxSubmissions: undefined,
           totalRewardPool: undefined,
@@ -256,7 +258,7 @@ export function CreatePromotionalBountyForm({ onCreated }: CreatePromotionalBoun
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label htmlFor="rewardAmount">
-                Reward Amount (ROXN) <span className="text-destructive">*</span>
+                Reward Amount <span className="text-destructive">*</span>
               </Label>
               <div className="relative">
                 <Input
@@ -268,28 +270,28 @@ export function CreatePromotionalBountyForm({ onCreated }: CreatePromotionalBoun
                   placeholder="0.00"
                   required
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">ROXN</span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">{formData.rewardCurrency}</span>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="rewardType">
-                Reward Type <span className="text-destructive">*</span>
+              <Label htmlFor="rewardCurrency">
+                Reward Currency <span className="text-destructive">*</span>
               </Label>
               <Select
-                value={formData.rewardType}
+                value={formData.rewardCurrency}
                 onValueChange={(value) => setFormData({
                   ...formData,
-                  rewardType: value as "PER_SUBMISSION" | "POOL" | "TIERED"
+                  rewardCurrency: value as "XDC" | "ROXN" | "USDC"
                 })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select reward type" />
+                  <SelectValue placeholder="Select currency" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="PER_SUBMISSION">Per Submission</SelectItem>
-                  <SelectItem value="POOL">Pool (Total amount divided among all valid submissions)</SelectItem>
-                  <SelectItem value="TIERED">Tiered (Based on performance)</SelectItem>
+                  <SelectItem value="XDC">XDC</SelectItem>
+                  <SelectItem value="ROXN">ROXN</SelectItem>
+                  <SelectItem value="USDC">USDC</SelectItem>
                 </SelectContent>
               </Select>
             </div>

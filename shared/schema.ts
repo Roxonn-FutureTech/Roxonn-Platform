@@ -543,6 +543,7 @@ export const promotionalBounties = pgTable("promotional_bounties", {
   maxSubmissions: integer("max_submissions"),
   totalRewardPool: decimal("total_reward_pool", { precision: 18, scale: 8 }),
   campaignId: text("campaign_id"),
+  tierConfig: text("tier_config"), // JSON field for TIERED reward configurations
   expiresAt: timestamp("expires_at", { mode: 'date', withTimezone: true }),
   createdAt: timestamp("created_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),

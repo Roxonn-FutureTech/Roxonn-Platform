@@ -36,6 +36,7 @@ interface PromotionalBountyCardProps {
     promotionalChannels: string[];
     requiredDeliverable: string;
     rewardAmount: string;
+    rewardCurrency: string;  // Added currency field
     rewardType: string;
     maxSubmissions?: number;
     totalRewardPool?: string;
@@ -61,21 +62,195 @@ export function PromotionalBountyCard({ bounty }: PromotionalBountyCardProps) {
     e.preventDefault();
 
     // Validate proof links with URL validation
-    const validLinks = proofLinks.filter(link => {
+    const validLinks = [];
+    const errors = [];
+
+    // Create a map of valid channels for quick lookup
+    const validChannelMap = bounty.promotionalChannels.reduce((map, channel) => {
+      map[channel.toLowerCase()] = true;
+      return map;
+    }, {} as Record<string, boolean>);
+
+    for (const link of proofLinks) {
       const trimmed = link.trim();
-      if (!trimmed) return false;
+
+      if (!trimmed) continue;
+
       try {
-        new URL(trimmed);
-        return trimmed.startsWith('http://') || trimmed.startsWith('https://');
-      } catch {
-        return false;
+        const urlObj = new URL(trimmed);
+
+        // Basic URL validation
+        if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+          errors.push(`Invalid URL protocol: ${trimmed}`);
+          continue;
+        }
+
+        // Channel-specific URL validation
+        let channelMatched = false;
+        for (const channel of bounty.promotionalChannels) {
+          const channelLower = channel.toLowerCase();
+
+          // Twitter/X validation
+          if (channelLower.includes('twitter') || channelLower.includes('x')) {
+            const twitterPatterns = [
+              /^https?:\/\/(www\.)?twitter\.com\/\w+\/status\/\d+/,
+              /^https?:\/\/(www\.)?x\.com\/\w+\/status\/\d+/,
+              /^https?:\/\/t\.co\//
+            ];
+
+            if (twitterPatterns.some(pattern => pattern.test(trimmed))) {
+              channelMatched = true;
+              break;
+            }
+          }
+
+          // LinkedIn validation
+          else if (channelLower.includes('linkedin')) {
+            const linkedinPatterns = [
+              /^https?:\/\/(www\.)?linkedin\.com\/posts\/\w+/,
+              /^https?:\/\/(www\.)?linkedin\.com\/in\/\w+/,
+              /^https?:\/\/(www\.)?linkedin\.com\/feed\/update/,
+              /^https?:\/\/lnkd\.in\//
+            ];
+
+            if (linkedinPatterns.some(pattern => pattern.test(trimmed))) {
+              channelMatched = true;
+              break;
+            }
+          }
+
+          // Facebook validation
+          else if (channelLower.includes('facebook')) {
+            const facebookPatterns = [
+              /^https?:\/\/(www\.)?facebook\.com\/.*/,
+              /^https?:\/\/fb\.me\//
+            ];
+
+            if (facebookPatterns.some(pattern => pattern.test(trimmed))) {
+              channelMatched = true;
+              break;
+            }
+          }
+
+          // Instagram validation
+          else if (channelLower.includes('instagram')) {
+            const instagramPatterns = [
+              /^https?:\/\/(www\.)?instagram\.com\/p\/.+$/,
+              /^https?:\/\/(www\.)?instagram\.com\/reel\/.+$/,
+              /^https?:\/\/(www\.)?instagram\.com\/stories\/.+$/,
+              /^https?:\/\/instagr\.am\/.+$/,
+              /^https?:\/\/(www\.)?fb\.watch\/.+$/  // Facebook Watch links for Instagram content
+            ];
+
+            if (instagramPatterns.some(pattern => pattern.test(trimmed))) {
+              channelMatched = true;
+              break;
+            }
+          }
+
+          // YouTube validation
+          else if (channelLower.includes('youtube')) {
+            const youtubePatterns = [
+              /^https?:\/\/(www\.)?youtube\.com\/watch\?v=.+/,
+              /^https?:\/\/(www\.)?youtube\.com\/shorts\/.+$/,
+              /^https?:\/\/(www\.)?youtu.be\/.+/
+            ];
+
+            if (youtubePatterns.some(pattern => pattern.test(trimmed))) {
+              channelMatched = true;
+              break;
+            }
+          }
+
+          // TikTok validation
+          else if (channelLower.includes('tiktok')) {
+            const tiktokPatterns = [
+              /^https?:\/\/(www\.)?tiktok\.com\/@.*/,
+              /^https?:\/\/vm\.tiktok\.com\/.+/
+            ];
+
+            if (tiktokPatterns.some(pattern => pattern.test(trimmed))) {
+              channelMatched = true;
+              break;
+            }
+          }
+
+          // Discord validation
+          else if (channelLower.includes('discord')) {
+            const discordPatterns = [
+              /^https?:\/\/(www\.)?discord\.com\/channels\/.+$/,
+              /^https?:\/\/discord\.gg\/.+/
+            ];
+
+            if (discordPatterns.some(pattern => pattern.test(trimmed))) {
+              channelMatched = true;
+              break;
+            }
+          }
+
+          // Reddit validation
+          else if (channelLower.includes('reddit')) {
+            const redditPatterns = [
+              /^https?:\/\/(www\.)?reddit\.com\/r\/.+\/comments\/.+$/,
+              /^https?:\/\/(www\.)?redd.it\/.+/
+            ];
+
+            if (redditPatterns.some(pattern => pattern.test(trimmed))) {
+              channelMatched = true;
+              break;
+            }
+          }
+
+          // GitHub validation
+          else if (channelLower.includes('github')) {
+            const githubPatterns = [
+              /^https?:\/\/(www\.)?github\.com\/.+\/.+/
+            ];
+
+            if (githubPatterns.some(pattern => pattern.test(trimmed))) {
+              channelMatched = true;
+              break;
+            }
+          }
+        }
+
+        // If no channel matched, check for other valid channels
+        if (!channelMatched) {
+          // If we have specific channel requirements, warn the user
+          if (bounty.promotionalChannels.length > 0) {
+            errors.push(`URL "${trimmed}" doesn't match any of the required promotional channels: ${bounty.promotionalChannels.join(", ")}`);
+            continue;
+          }
+        }
+
+        // Additional checks for spam patterns
+        const spamIndicators = [
+          /^https?:\/\/localhost/,
+          /^https?:\/\/127\.0\.0\.1/,
+          /bit\.ly/i,
+          /tinyurl\.com/i,
+          /adf\.ly/i,
+          /is\.gd/i,
+          /ow\.ly/i,
+          /t\.me/i  // Telegram
+        ];
+
+        const isSpam = spamIndicators.some(pattern => pattern.test(trimmed));
+        if (isSpam) {
+          errors.push(`Spam or invalid URL detected: ${trimmed}`);
+          continue;
+        }
+
+        validLinks.push(trimmed);
+      } catch (error) {
+        errors.push(`Invalid URL format: ${trimmed}`);
       }
-    });
+    }
 
     if (validLinks.length === 0) {
       toast({
         title: "Error",
-        description: "Please provide at least one valid URL",
+        description: errors.length > 0 ? errors[0] : "Please provide at least one valid URL",
         variant: "destructive",
       });
       return;
@@ -129,16 +304,30 @@ export function PromotionalBountyCard({ bounty }: PromotionalBountyCardProps) {
   const isExpired = bounty.expiresAt ? new Date(bounty.expiresAt) < new Date() : false;
   const isClosed = bounty.status !== 'ACTIVE' || isExpired;
 
+  // Determine the display status and badge styling
+  let statusText = bounty.status;
+  let badgeVariant = "default";
+  let badgeClasses = "bg-emerald-500/10 text-emerald-500 border-emerald-500/30";
+
+  if (isExpired) {
+    statusText = 'EXPIRED';
+    badgeVariant = "destructive";
+    badgeClasses = "bg-destructive/10 text-destructive border-destructive/30";
+  } else if (bounty.status !== 'ACTIVE') {
+    badgeVariant = "secondary";
+    badgeClasses = "bg-muted/50 text-muted-foreground";
+  }
+
   return (
     <Card className="group overflow-hidden">
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-center gap-2 mb-2">
           <h3 className="text-xl font-bold truncate max-w-[70%]">{bounty.title}</h3>
           <Badge
-            variant={bounty.status === 'ACTIVE' && !isExpired ? "default" : "secondary"}
-            className={bounty.status === 'ACTIVE' && !isExpired ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30" : "bg-muted/50 text-muted-foreground"}
+            variant={badgeVariant}
+            className={badgeClasses}
           >
-            {isExpired ? 'EXPIRED' : bounty.status}
+            {statusText}
           </Badge>
         </div>
 
@@ -177,7 +366,7 @@ export function PromotionalBountyCard({ bounty }: PromotionalBountyCardProps) {
             <div className="flex items-center gap-2">
               <Coins className="h-4 w-4 text-amber-500" />
               <div>
-                <p className="text-sm font-medium">{bounty.rewardAmount} ROXN</p>
+                <p className="text-sm font-medium">{bounty.rewardAmount} {bounty.rewardCurrency || 'ROXN'}</p>
                 <p className="text-xs text-muted-foreground">{bounty.rewardType}</p>
               </div>
             </div>

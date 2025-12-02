@@ -2,6 +2,64 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { STAGING_API_URL } from "@/config";
 import { useAuth } from "./use-auth";
 
+// Error handling utility function
+const handleApiError = async (response: Response) => {
+  const status = response.status;
+
+  // Try to get error details from response
+  let errorMessage = 'An unexpected error occurred';
+  let errorData = null;
+
+  try {
+    errorData = await response.json();
+  } catch {
+    // If response is not JSON, try to get text
+    try {
+      const errorText = await response.text();
+      if (errorText) {
+        errorMessage = errorText;
+      }
+    } catch {
+      // If that also fails, use status-based messages
+    }
+  }
+
+  // Use error message from response if available
+  if (errorData?.error) {
+    errorMessage = errorData.error;
+  } else if (errorData?.message) {
+    errorMessage = errorData.message;
+  }
+
+  // Specific messages for different status codes
+  switch (status) {
+    case 400:
+      return new Error(errorData?.error || errorData?.message || 'Bad Request: Invalid input parameters');
+    case 401:
+      return new Error(errorData?.error || 'Authentication required. Please sign in.');
+    case 403:
+      return new Error(errorData?.error || 'Access denied. You do not have permission to perform this action.');
+    case 404:
+      return new Error(errorData?.error || 'Resource not found. The requested item does not exist.');
+    case 409:
+      return new Error(errorData?.error || 'Conflict: The request could not be completed due to a conflict.');
+    case 422:
+      return new Error(errorData?.error || errorData?.message || 'Unprocessable Entity: Invalid input data');
+    case 429:
+      return new Error(errorData?.error || 'Too Many Requests: Please try again later.');
+    case 500:
+      return new Error(errorData?.error || 'Server Error: Something went wrong on our end. Please try again later.');
+    case 502:
+      return new Error(errorData?.error || 'Gateway Error: Network connection issue. Please try again.');
+    case 503:
+      return new Error(errorData?.error || 'Service Temporarily Unavailable: Service is temporarily down. Please try again later.');
+    case 504:
+      return new Error(errorData?.error || 'Gateway Timeout: Request took too long. Please try again.');
+    default:
+      return new Error(errorMessage);
+  }
+};
+
 export interface PromotionalBounty {
   id: number;
   repoId: number;
@@ -82,14 +140,7 @@ const api = {
     });
 
     if (!response.ok) {
-      let errorMessage = 'Failed to fetch bounties';
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error || errorMessage;
-      } catch {
-        // Use default error message if JSON parsing fails
-      }
-      throw new Error(errorMessage);
+      throw await handleApiError(response);
     }
 
     return response.json();

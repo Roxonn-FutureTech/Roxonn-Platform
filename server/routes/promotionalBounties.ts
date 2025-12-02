@@ -13,8 +13,8 @@ import {
   type CreatePromotionalSubmissionInput,
 } from '../../shared/schema';
 import { log } from '../utils';
-import { blockchain } from '../blockchain'; // Import blockchain service for actual reward distribution
-import { ethers } from 'ethers'; // Import ethers for unit conversions
+import { blockchain } from '../blockchain';
+import { ethers } from 'ethers';
 
 const router = Router();
 
@@ -50,13 +50,33 @@ router.get('/repositories', requireAuth, async (req: Request, res: Response) => 
       return res.status(401).json({ error: 'Authentication required' });
     }
 
+    // Pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 100); // Max 100 per page
+    const offset = (page - 1) * limit;
+
     const repos = await db
       .select()
       .from(registeredRepositories)
       .where(eq(registeredRepositories.userId, userId))
-      .orderBy(desc(registeredRepositories.registeredAt));
+      .orderBy(desc(registeredRepositories.registeredAt))
+      .limit(limit)
+      .offset(offset);
 
-    res.json(repos);
+    const total = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(registeredRepositories)
+      .where(eq(registeredRepositories.userId, userId));
+
+    res.json({
+      data: repos,
+      pagination: {
+        page,
+        limit,
+        total: total[0].count,
+        pages: Math.ceil(total[0].count / limit)
+      }
+    });
   } catch (error: any) {
     log(`Error fetching repositories: ${error.message}`, 'error');
     res.status(500).json({ error: error.message });
@@ -67,6 +87,11 @@ router.get('/repositories', requireAuth, async (req: Request, res: Response) => 
 router.get('/bounties', async (req: Request, res: Response) => {
   try {
     const { type, status, repoId, channel } = req.query;
+
+    // Pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100); // Max 100 per page
+    const offset = (page - 1) * limit;
 
     const conditions = [];
     if (type) {
@@ -85,6 +110,12 @@ router.get('/bounties', async (req: Request, res: Response) => {
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
+    const total = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(promotionalBounties)
+      .leftJoin(registeredRepositories, eq(promotionalBounties.repoId, registeredRepositories.id))
+      .where(whereClause);
+
     const results = await db.select({
       bounty: promotionalBounties,
       repository: registeredRepositories,
@@ -92,7 +123,9 @@ router.get('/bounties', async (req: Request, res: Response) => {
       .from(promotionalBounties)
       .leftJoin(registeredRepositories, eq(promotionalBounties.repoId, registeredRepositories.id))
       .where(whereClause)
-      .orderBy(desc(promotionalBounties.createdAt));
+      .orderBy(desc(promotionalBounties.createdAt))
+      .limit(limit)
+      .offset(offset);
 
     let transformedBounties = results.map((r: any) => ({
       ...transformBounty(r.bounty),
@@ -105,7 +138,15 @@ router.get('/bounties', async (req: Request, res: Response) => {
       );
     }
 
-    res.json(transformedBounties);
+    res.json({
+      data: transformedBounties,
+      pagination: {
+        page,
+        limit,
+        total: total[0].count,
+        pages: Math.ceil(total[0].count / limit)
+      }
+    });
   } catch (error: any) {
     log(`Error fetching bounties: ${error.message}`, 'error');
     res.status(500).json({ error: error.message });
@@ -116,6 +157,11 @@ router.get('/bounties', async (req: Request, res: Response) => {
 router.get('/bounties/promotional', async (req: Request, res: Response) => {
   try {
     const { status, channel, repoId } = req.query;
+
+    // Pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100); // Max 100 per page
+    const offset = (page - 1) * limit;
 
     const conditions = [eq(promotionalBounties.type, 'PROMOTIONAL')];
 
@@ -133,6 +179,12 @@ router.get('/bounties/promotional', async (req: Request, res: Response) => {
       conditions.push(eq(promotionalBounties.repoId, repoIdNum));
     }
 
+    const total = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(promotionalBounties)
+      .leftJoin(registeredRepositories, eq(promotionalBounties.repoId, registeredRepositories.id))
+      .where(and(...conditions));
+
     const results = await db.select({
       bounty: promotionalBounties,
       repository: registeredRepositories,
@@ -140,7 +192,9 @@ router.get('/bounties/promotional', async (req: Request, res: Response) => {
       .from(promotionalBounties)
       .leftJoin(registeredRepositories, eq(promotionalBounties.repoId, registeredRepositories.id))
       .where(and(...conditions))
-      .orderBy(desc(promotionalBounties.createdAt));
+      .orderBy(desc(promotionalBounties.createdAt))
+      .limit(limit)
+      .offset(offset);
 
     let transformedBounties = results.map((r: any) => ({
       ...transformBounty(r.bounty),
@@ -164,7 +218,15 @@ router.get('/bounties/promotional', async (req: Request, res: Response) => {
       );
     }
 
-    res.json(transformedBounties);
+    res.json({
+      data: transformedBounties,
+      pagination: {
+        page,
+        limit,
+        total: total[0].count,
+        pages: Math.ceil(total[0].count / limit)
+      }
+    });
   } catch (error: any) {
     log(`Error fetching promotional bounties: ${error.message}`, 'error');
     res.status(500).json({ error: error.message });
@@ -193,15 +255,33 @@ router.get('/bounties/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Bounty not found' });
     }
 
+    // Pagination for submissions within the bounty
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 50); // Max 50 per page
+    const offset = (page - 1) * limit;
+
+    const total = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(promotionalSubmissions)
+      .where(eq(promotionalSubmissions.bountyId, bountyId));
+
     const submissions = await db
       .select()
       .from(promotionalSubmissions)
       .where(eq(promotionalSubmissions.bountyId, bountyId))
-      .orderBy(desc(promotionalSubmissions.createdAt));
+      .orderBy(desc(promotionalSubmissions.createdAt))
+      .limit(limit)
+      .offset(offset);
 
     const transformedBounty = transformBounty(result.bounty);
     transformedBounty.submissions = submissions.map(transformSubmission);
     transformedBounty.repository = result.repository;
+    transformedBounty.submissionsPagination = {
+      page,
+      limit,
+      total: total[0].count,
+      pages: Math.ceil(total[0].count / limit)
+    };
 
     res.json(transformedBounty);
   } catch (error: any) {
@@ -260,7 +340,7 @@ router.post('/bounties', requireAuth, async (req: Request, res: Response) => {
       repoId: validatedData.repoId,
       creatorId: userId,
       type: validatedData.type,
-      status: 'DRAFT', // Changed to 'DRAFT' to match schema default and allow explicit activation
+      status: 'ACTIVE', // Changed to 'ACTIVE' to make bounties immediately available (was 'DRAFT')
       title: validatedData.title,
       description: validatedData.description,
       promotionalChannels: validatedData.promotionalChannels || [],
@@ -345,6 +425,11 @@ router.get('/submissions', requireAuth, async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
+    // Pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100); // Max 100 per page
+    const offset = (page - 1) * limit;
+
     const conditions = [];
 
     if (bountyId) {
@@ -400,12 +485,27 @@ router.get('/submissions', requireAuth, async (req: Request, res: Response) => {
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
+    const total = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(promotionalSubmissions)
+      .where(whereClause);
+
     const submissions = await db.select()
       .from(promotionalSubmissions)
       .where(whereClause)
-      .orderBy(desc(promotionalSubmissions.createdAt));
+      .orderBy(desc(promotionalSubmissions.createdAt))
+      .limit(limit)
+      .offset(offset);
 
-    res.json(submissions.map(transformSubmission));
+    res.json({
+      data: submissions.map(transformSubmission),
+      pagination: {
+        page,
+        limit,
+        total: total[0].count,
+        pages: Math.ceil(total[0].count / limit)
+      }
+    });
   } catch (error: any) {
     log(`Error fetching submissions: ${error.message}`, 'error');
     res.status(500).json({ error: error.message });
@@ -488,6 +588,7 @@ router.post('/submissions', requireAuth, async (req: Request, res: Response) => 
         .select()
         .from(promotionalBounties)
         .where(eq(promotionalBounties.id, validatedData.bountyId))
+        .for('update') // Add row lock to prevent race conditions
         .limit(1);
 
       if (!bounty) {
@@ -514,7 +615,8 @@ router.post('/submissions', requireAuth, async (req: Request, res: Response) => 
               eq(promotionalSubmissions.status, 'PENDING'),
               eq(promotionalSubmissions.status, 'APPROVED')
             )
-          ));
+          ))
+          .for('update'); // Add row lock to prevent race conditions during count check
 
         const count = submissionCountResult[0]?.count || 0;
         if (count >= bounty.maxSubmissions) {
@@ -643,15 +745,66 @@ router.patch('/submissions/:id/review', requireAuth, async (req: Request, res: R
         let rewardAmount = "";
         let rewardCurrency = bounty.rewardCurrency || 'XDC';
 
-        // For POOL type, calculate reward amount based on max submissions if available, otherwise use total pool / total allowed
+        // Calculate reward amount based on reward type
         if (bounty.rewardType === 'POOL' && bounty.totalRewardPool) {
-          // Calculate reward per submission based on max submissions if available
-          // If maxSubmissions is not set, use a fallback (e.g., 10) or just use the current approved count
-          const maxSubmissions = bounty.maxSubmissions || 1; // Default to 1 if no max submissions specified
-          const totalPool = parseFloat(bounty.totalRewardPool);
-          rewardAmount = (totalPool / maxSubmissions).toString();
+          // For POOL type, the reward per submission must have a maxSubmissions value to determine how to split the pool
+          if (!bounty.maxSubmissions) {
+            throw new Error('maxSubmissions must be set for POOL reward type to determine how rewards should be distributed');
+          }
 
-          log(`Calculated pool reward amount (${rewardAmount}) for contributor ${contributor.id} for approved submission ${submissionId} based on total pool of ${bounty.totalRewardPool} divided among ${maxSubmissions} max submissions`, 'rewards');
+          const totalPool = parseFloat(bounty.totalRewardPool);
+          const poolRewardPerSubmission = (totalPool / bounty.maxSubmissions).toString();
+
+          log(`Calculated pool reward amount (${poolRewardPerSubmission}) for contributor ${contributor.id} for approved submission ${submissionId} based on total pool of ${bounty.totalRewardPool} divided among ${bounty.maxSubmissions} max submissions`, 'rewards');
+
+          rewardAmount = poolRewardPerSubmission;
+        } else if (bounty.rewardType === 'TIERED' && bounty.tierConfig) {
+          // For TIERED type, calculate reward based on submission tier
+          // The tierConfig contains tier definitions with required criteria and reward amounts
+          try {
+            const tierConfig = JSON.parse(bounty.tierConfig);
+
+            // Count all approved submissions for this contributor for the bounty to determine their tier
+            const contributorSubmissions = await db
+              .select()
+              .from(promotionalSubmissions)
+              .where(
+                and(
+                  eq(promotionalSubmissions.bountyId, bounty.id),
+                  eq(promotionalSubmissions.contributorId, contributor.id),
+                  or(
+                    eq(promotionalSubmissions.status, 'APPROVED'),
+                    eq(promotionalSubmissions.status, 'PENDING') // Include pending ones as well since they might be approved soon
+                  )
+                )
+              );
+
+            // Only count APPROVED submissions for tier calculation to prevent gaming of the system
+            const approvedSubmissions = contributorSubmissions.filter(sub => sub.status === 'APPROVED');
+            const submissionCount = approvedSubmissions.length;
+
+            // Find the appropriate tier based on submission count
+            // Sort tiers by threshold in descending order to find the highest applicable tier
+            const sortedTiers = tierConfig.tiers
+              .map((tier: any) => ({ ...tier, threshold: parseInt(tier.threshold) }))
+              .sort((a: any, b: any) => b.threshold - a.threshold);
+
+            // Find the first tier whose threshold is met or exceeded by submission count
+            const applicableTier = sortedTiers.find((tier: any) => submissionCount >= tier.threshold);
+
+            if (applicableTier) {
+              rewardAmount = applicableTier.rewardAmount;
+              log(`Applied TIERED reward amount (${rewardAmount}) based on ${submissionCount} approved submissions reaching tier with threshold ${applicableTier.threshold} for contributor ${contributor.id} for approved submission ${submissionId}`, 'rewards');
+            } else {
+              // Use base reward amount if no tier is met
+              rewardAmount = bounty.rewardAmount;
+              log(`Using base reward amount (${rewardAmount}) for contributor ${contributor.id} as no tier threshold was met with ${submissionCount} approved submissions`, 'rewards');
+            }
+          } catch (parseError: any) {
+            log(`Error parsing tier configuration for bounty ${bounty.id}: ${parseError.message}`, 'error');
+            // Fallback to fixed reward amount if tier config parsing fails
+            rewardAmount = bounty.rewardAmount;
+          }
         } else {
           // For PER_SUBMISSION or other types, use the fixed reward amount
           rewardAmount = bounty.rewardAmount;
@@ -659,24 +812,103 @@ router.patch('/submissions/:id/review', requireAuth, async (req: Request, res: R
           log(`Using fixed reward amount (${rewardAmount}) for contributor ${contributor.id} for approved submission ${submissionId}`, 'rewards');
         }
 
-        // NOTE: Actual reward distribution via blockchain should be implemented here
-        // For now, we're only tracking that the reward should be distributed in the database
-        // The real implementation would depend on the specific blockchain service integration
+        // Now implement actual blockchain reward distribution for promotional bounties
+        // Convert reward amount to Wei based on currency type
+        let rewardAmountInWei: bigint;
+        if (rewardCurrency === 'USDC') {
+          // USDC has 6 decimals
+          rewardAmountInWei = ethers.parseUnits(rewardAmount, 6);
+        } else {
+          // XDC and ROXN have 18 decimals
+          rewardAmountInWei = ethers.parseEther(rewardAmount);
+        }
 
-        // For Phase 1 implementation, just mark reward as pending for admin to distribute later
+        log(`Attempting to distribute ${rewardAmount} ${rewardCurrency} to ${contributor.xdcWalletAddress}`, 'rewards');
+
+        // Determine which blockchain function to use based on currency
+        let txHash: string | undefined;
+        let txSuccess = false;
+
+        if (rewardCurrency === 'XDC') {
+          // For XDC, we can use sendFunds method from blockchain service
+          // This requires a pool manager wallet to send the funds
+          const poolManager = await db
+            .select()
+            .from(users)
+            .where(eq(users.id, userId))
+            .limit(1);
+
+          if (!poolManager[0] || !poolManager[0].xdcWalletAddress) {
+            throw new Error(`Pool manager ${userId} does not have a wallet address to distribute rewards`);
+          }
+
+          const tx = await blockchain.sendFunds(
+            userId, // Pool manager ID who has funds to distribute
+            contributor.xdcWalletAddress,
+            rewardAmountInWei
+          );
+
+          txHash = tx.hash;
+          txSuccess = true;
+        } else if (rewardCurrency === 'ROXN' || rewardCurrency === 'USDC') {
+          // For ROXN and USDC tokens, we need to use token transfer functions
+          // First, ensure the pool manager has given approval for token spending if needed
+          // In this case, we use sendFunds since the blockchain service has been updated to handle token transfers properly
+          const poolManager = await db
+            .select()
+            .from(users)
+            .where(eq(users.id, userId))
+            .limit(1);
+
+          if (!poolManager[0] || !poolManager[0].xdcWalletAddress) {
+            throw new Error(`Pool manager ${userId} does not have a wallet address to distribute rewards`);
+          }
+
+          const tx = await blockchain.sendFunds(
+            userId, // Pool manager ID who has tokens to distribute
+            contributor.xdcWalletAddress,
+            rewardAmountInWei
+          );
+
+          txHash = tx.hash;
+          txSuccess = true;
+        } else {
+          throw new Error(`Unsupported reward currency: ${rewardCurrency}`);
+        }
+
+        // Update the submission record with reward distribution information
         await db
           .update(promotionalSubmissions)
           .set({
-            rewardDistributed: false, // Changed to false since we haven't distributed yet
-            rewardDistributedAt: null, // No distribution time yet
+            rewardDistributed: txSuccess,
+            rewardDistributedAt: txSuccess ? new Date() : null,
             rewardAmountDistributed: rewardAmount,
-            rewardCurrencyDistributed: rewardCurrency // Track which currency was designated
+            rewardCurrencyDistributed: rewardCurrency,
+            rewardDistributionFailureReason: txSuccess ? null : 'Transaction failed'
           })
           .where(eq(promotionalSubmissions.id, submissionId));
 
-        log(`Reward distribution marked as pending for submission ${submissionId} to contributor ${contributor.id}`, 'rewards');
+        if (txSuccess) {
+          log(`Successfully distributed reward of ${rewardAmount} ${rewardCurrency} to contributor ${contributor.id}. TX: ${txHash}`, 'rewards');
+        } else {
+          log(`Failed to distribute reward of ${rewardAmount} ${rewardCurrency} to contributor ${contributor.id}`, 'rewards');
+        }
+
       } catch (rewardError: any) {
         log(`Failed to process reward distribution for submission ${submissionId}: ${rewardError.message}`, 'rewards-error');
+
+        // Update the submission record to reflect the failure
+        await db
+          .update(promotionalSubmissions)
+          .set({
+            rewardDistributed: false,
+            rewardDistributedAt: null,
+            rewardAmountDistributed: rewardAmount || null,
+            rewardCurrencyDistributed: rewardCurrency || null,
+            rewardDistributionFailureReason: rewardError.message
+          })
+          .where(eq(promotionalSubmissions.id, submissionId));
+
         // Don't fail the entire operation if reward processing fails, just log it
         // The submission status is still set to APPROVED but rewardDistributed will remain false
       }
