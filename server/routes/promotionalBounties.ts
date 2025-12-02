@@ -622,18 +622,11 @@ router.patch('/submissions/:id/review', requireAuth, async (req: Request, res: R
           throw new Error(`Contributor ${submission.contributorId} does not have a wallet address`);
         }
 
-        // Determine reward amount based on bounty configuration
-        let rewardAmount = bounty.rewardAmount;
-        if (bounty.rewardType === 'POOL') {
-          // For POOL type, distribute the reward evenly among all approved submissions
-          // For now, using the fixed reward amount from the bounty
-        }
-
         // NOTE: Reward distribution logic needs to be implemented in a separate service
         // Currently placeholder for blockchain reward distribution
         // await blockchainService.distributeReward({
         //   receiver: contributor.xdcWalletAddress,
-        //   amount: rewardAmount,
+        //   amount: bounty.rewardAmount,
         //   bountyId: bounty.id
         // });
 

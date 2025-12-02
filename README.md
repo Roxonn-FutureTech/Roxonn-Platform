@@ -72,11 +72,13 @@ graph TB
         AuthService[Auth Service]
         WalletService[Wallet Service]
         StorageService[Storage Service]
+        PromotionService[Promotional Bounties Service]
     end
 
     subgraph Blockchain
         ROXNToken[ROXN Token Contract]
         RepoRewards[RepoRewards Contract]
+        DualCurrencyRewards[Dual Currency Rewards Contract]
         CustomForwarder[Custom Forwarder]
     end
 
@@ -91,13 +93,16 @@ graph TB
     Express --> AuthService
     Express --> WalletService
     Express --> StorageService
+    Express --> PromotionService
     BlockchainService --> ROXNToken
     BlockchainService --> RepoRewards
+    BlockchainService --> DualCurrencyRewards
     BlockchainService --> CustomForwarder
     WalletService --> TatumAPI
     AuthService --> GitHub
     ROXNToken --> XDCNetwork
     RepoRewards --> XDCNetwork
+    DualCurrencyRewards --> XDCNetwork
     CustomForwarder --> XDCNetwork
 ```
 
@@ -111,18 +116,33 @@ graph TB
   - Pool Managers: Can allocate rewards and manage repositories
   - Contributors: Can receive rewards for contributions
   - Uses a gas-efficient design with optimized storage
+- **DualCurrencyRepoRewards Contract**: Advanced reward system supporting XDC, ROXN, and USDC currencies
+  - Multi-currency support (XDC, ROXN, USDC)
+  - Pool, Per-Submission, and Tiered reward models
+  - Max submissions and expiration date support
+  - Status management (DRAFT, ACTIVE, PAUSED, COMPLETED, CANCELLED)
 - **CustomForwarder Contract**: Meta-transaction implementation
   - Enables gas-less transactions for better user experience
   - Implements EIP-712 signature verification
 
-### 2. User Registration Flow
+### 2. Promotional Bounties Feature
+- **Create Bounties**: Pool managers can create promotional bounties with custom reward amounts
+- **Multi-Channel Support**: Support for Twitter/X, LinkedIn, YouTube, Blog, Discord, Reddit, and other promotional channels
+- **Flexible Reward Types**: Choose between per-submission, pool, or tiered reward distribution
+- **Submission Management**: Contributors can submit proof links for promotional activities
+- **Review System**: Pool managers can review and approve/reject submissions
+- **Multi-Currency Rewards**: Supports XDC, ROXN, and USDC as reward currencies
+- **Max Submissions & Expiration**: Control the number of allowed submissions and set expiration dates
+- **Status Tracking**: Full lifecycle management (DRAFT, ACTIVE, PAUSED, COMPLETED, CANCELLED)
+
+### 3. User Registration Flow
 1. User authenticates via GitHub OAuth
 2. System generates XDC wallet using Tatum API
 3. Relayer wallet registers user on blockchain
 4. User wallet details stored securely in database
 
-### 3. Transaction Management
-- **Relayer Wallet**: 
+### 4. Transaction Management
+- **Relayer Wallet**:
   - Handles user registration transactions
   - Manages gas fees for onboarding
   - Uses dynamic gas pricing with network monitoring
@@ -131,13 +151,15 @@ graph TB
   - Requires user signature for operations
   - Full control over funds and rewards
 
-### 4. Security Features
+### 5. Security Features
 - Secure wallet generation and storage
 - Protected API endpoints
 - Relayer wallet with limited permissions
 - Transaction signing validation
 - Gas price management for network stability
 - AWS KMS integration for key management
+- Server-side URL validation for all user-submitted links
+- Rate limiting and CSRF protection
 
 ## Extended Functionality
 
@@ -267,7 +289,7 @@ async function verifyUserRegistration(username) {
         apiKey: 'your_partner_api_key'
       }
     });
-    
+
     if (response.data.verified) {
       console.log('User has successfully registered on Roxonn!');
       return true;
