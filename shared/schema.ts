@@ -560,6 +560,8 @@ export const promotionalSubmissions = pgTable("promotional_submissions", {
   reviewedAt: timestamp("reviewed_at", { mode: 'date', withTimezone: true }),
   reviewedBy: integer("reviewed_by").references(() => users.id),
   reviewNotes: text("review_notes"),
+  rewardDistributed: boolean("reward_distributed").default(false),
+  rewardDistributedAt: timestamp("reward_distributed_at", { mode: 'date', withTimezone: true }),
   createdAt: timestamp("created_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
 });

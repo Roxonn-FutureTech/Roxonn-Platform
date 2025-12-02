@@ -13,7 +13,6 @@ import {
   type CreatePromotionalSubmissionInput,
 } from '../../shared/schema';
 import { log } from '../utils';
-import { blockchain } from '../blockchain'; // Import blockchain service for reward distribution
 
 const router = Router();
 
