@@ -302,12 +302,15 @@ const api = {
   }
 };
 
+// Constants
+const QUERY_STALE_TIME = 5 * 60 * 1000; // 5 minutes in milliseconds
+
 // React Query hooks
 export function usePromotionalBounties(type?: string, status?: string, repoId?: number, channel?: string) {
   return useQuery({
     queryKey: ['promotional-bounties', type, status, repoId, channel],
     queryFn: () => api.getBounties(type, status, repoId, channel),
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: QUERY_STALE_TIME, // 5 minutes
   });
 }
 
@@ -315,7 +318,7 @@ export function usePromotionalBountiesList(status?: string, channel?: string, re
   return useQuery({
     queryKey: ['promotional-bounties-list', status, channel, repoId],
     queryFn: () => api.getPromotionalBounties(status, channel, repoId),
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: QUERY_STALE_TIME, // 5 minutes
   });
 }
 
@@ -323,7 +326,7 @@ export function usePromotionalBounty(id: number) {
   return useQuery({
     queryKey: ['promotional-bounty', id],
     queryFn: () => api.getBountyById(id),
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: QUERY_STALE_TIME, // 5 minutes
   });
 }
 
@@ -355,7 +358,7 @@ export function usePromotionalSubmissions(bountyId?: number, status?: string, co
   return useQuery({
     queryKey: ['promotional-submissions', bountyId, status, contributorId],
     queryFn: () => api.getSubmissions(bountyId, status, contributorId),
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: QUERY_STALE_TIME, // 5 minutes
   });
 }
 
@@ -387,7 +390,7 @@ export function usePromotionalSubmission(id: number) {
   return useQuery({
     queryKey: ['promotional-submission', id],
     queryFn: () => api.getSubmissionById(id),
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: QUERY_STALE_TIME, // 5 minutes
   });
 }
 
@@ -422,6 +425,6 @@ export function useUserRepositories() {
       return response.json();
     },
     enabled: !!user,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: QUERY_STALE_TIME, // 5 minutes
   });
 }

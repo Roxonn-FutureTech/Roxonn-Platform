@@ -16,15 +16,15 @@ export const users = pgTable("users", {
   githubAccessToken: text("github_access_token").notNull(),
   isProfileComplete: boolean("is_profile_complete").default(false),
   role: text("role", { enum: ["contributor", "poolmanager"] }),
-  
+
   // Single XDC wallet address
   xdcWalletAddress: text("xdc_wallet_address"),
-  
+
   // Wallet security and reference
   walletReferenceId: text("wallet_reference_id"),
   encryptedPrivateKey: text("encrypted_private_key"),
   encryptedMnemonic: text("encrypted_mnemonic"),
-  
+
   promptBalance: integer('prompt_balance').default(0).notNull(), // Changed from aiCredits
 
   // Private repository access support
@@ -128,7 +128,7 @@ export const fundRoxnRepoSchema = z.object({ // Renamed
   roxnAmount: z.string().min(1, "ROXN amount must be provided")
     .refine(val => {
       try {
-        return parseFloat(val) > 0; 
+        return parseFloat(val) > 0;
       } catch (e) { return false; }
     }, { message: "ROXN amount must be a positive number" }),
 });
@@ -139,7 +139,7 @@ export const fundUsdcRepoSchema = z.object({
   usdcAmount: z.string().min(1, "USDC amount must be provided")
     .refine(val => {
       try {
-        return parseFloat(val) > 0; 
+        return parseFloat(val) > 0;
       } catch (e) { return false; }
     }, { message: "USDC amount must be a positive number" }),
 });
@@ -150,7 +150,7 @@ export const allocateUnifiedBountySchema = z.object({ // Renamed
   bountyAmount: z.string().min(1, "Bounty amount must be provided") // Generic name
     .refine(val => {
       try {
-        return parseFloat(val) > 0; 
+        return parseFloat(val) > 0;
       } catch (e) { return false; }
     }, { message: "Bounty amount must be a positive number" }),
   currencyType: z.enum(['XDC', 'ROXN', 'USDC']), // Currency type: XDC, ROXN, or USDC
@@ -174,7 +174,7 @@ export const IssueBountyDetailsSchema = z.object({
 export type IssueBountyDetails = z.infer<typeof IssueBountyDetailsSchema>;
 
 // TypeScript type for a repository's reward pool information (Unified: XDC and ROXN)
-export interface UnifiedPoolInfo { 
+export interface UnifiedPoolInfo {
   roxnPoolRewards: string;    // Total ROXN available, formatted (matches blockchain.ts)
   xdcPoolRewards: string;     // Total XDC available, formatted (matches blockchain.ts)
   usdcPoolRewards: string;    // Total USDC available, formatted (matches blockchain.ts)
@@ -246,7 +246,7 @@ export const promptTransactions = pgTable('prompt_transactions', {
   transactionType: text('transaction_type', { enum: ['purchase', 'usage_vscode_ai', 'admin_adjustment', 'initial_grant'] }).notNull(),
   promptsChanged: integer('prompts_changed').notNull(), // Positive for additions, negative for deductions
   balanceAfterTx: integer('balance_after_tx').notNull(), // User's prompt balance after this transaction
-  notes: text('notes'), 
+  notes: text('notes'),
   onrampOrderId: text('onramp_order_id'), // Optional, for linking to Onramp.money orders if applicable
   createdAt: timestamp('created_at', { mode: 'date' }).defaultNow().notNull(),
 });
@@ -578,7 +578,10 @@ export const createPromotionalBountySchema = z.object({
   rewardType: z.enum(["PER_SUBMISSION", "POOL", "TIERED"]).default("PER_SUBMISSION"),
   maxSubmissions: z.number().int().positive().optional(),
   totalRewardPool: z.string().optional(),
-  expiresAt: z.string().datetime().optional(),
+  expiresAt: z.string().datetime().optional().refine(
+    (date) => !date || new Date(date) > new Date(),
+    { message: "Expiration date must be in the future" }
+  ),
 });
 
 export type CreatePromotionalBountyInput = z.infer<typeof createPromotionalBountySchema>;
