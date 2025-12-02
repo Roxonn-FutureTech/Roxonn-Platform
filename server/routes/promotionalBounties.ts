@@ -622,21 +622,48 @@ router.patch('/submissions/:id/review', requireAuth, async (req: Request, res: R
           throw new Error(`Contributor ${submission.contributorId} does not have a wallet address`);
         }
 
-        // NOTE: Reward distribution logic needs to be implemented in a separate service
-        // Currently placeholder for blockchain reward distribution
-        // await blockchainService.distributeReward({
-        //   receiver: contributor.xdcWalletAddress,
-        //   amount: bounty.rewardAmount,
-        //   bountyId: bounty.id
-        // });
+        // For POOL type, calculate reward amount based on submissions
+        if (bounty.rewardType === 'POOL' && bounty.totalRewardPool) {
+          // Count all approved submissions for this bounty to divide the total pool evenly
+          const approvedSubmissionsResult = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(promotionalSubmissions)
+            .where(and(
+              eq(promotionalSubmissions.bountyId, bounty.id),
+              eq(promotionalSubmissions.status, 'APPROVED')
+            ));
 
-        log(`Reward calculated for contributor ${contributor.id} for approved submission ${submissionId}`, 'rewards');
+          const approvedCount = approvedSubmissionsResult[0]?.count || 1; // Default to 1 to avoid division by zero
+          const totalPool = parseFloat(bounty.totalRewardPool);
+          const rewardAmount = (totalPool / approvedCount).toString();
 
-        // Update submission to indicate reward distribution is pending
-        await db
-          .update(promotionalSubmissions)
-          .set({ rewardDistributed: true, rewardDistributedAt: new Date() })
-          .where(eq(promotionalSubmissions.id, submissionId));
+          log(`Calculated pool reward amount (${rewardAmount}) for contributor ${contributor.id} for approved submission ${submissionId}`, 'rewards');
+
+          // Update submission to indicate reward distribution is pending
+          await db
+            .update(promotionalSubmissions)
+            .set({
+              rewardDistributed: true,
+              rewardDistributedAt: new Date(),
+              rewardAmountDistributed: rewardAmount // Track the actual reward amount distributed
+            })
+            .where(eq(promotionalSubmissions.id, submissionId));
+        } else {
+          // For PER_SUBMISSION or other types, use the fixed reward amount
+          const rewardAmount = bounty.rewardAmount;
+
+          log(`Using fixed reward amount (${rewardAmount}) for contributor ${contributor.id} for approved submission ${submissionId}`, 'rewards');
+
+          // Update submission to indicate reward distribution is pending
+          await db
+            .update(promotionalSubmissions)
+            .set({
+              rewardDistributed: true,
+              rewardDistributedAt: new Date(),
+              rewardAmountDistributed: rewardAmount // Track the actual reward amount distributed
+            })
+            .where(eq(promotionalSubmissions.id, submissionId));
+        }
       } catch (rewardError: any) {
         log(`Failed to initiate reward distribution for submission ${submissionId}: ${rewardError.message}`, 'rewards-error');
         // Don't fail the entire operation if reward distribution fails, just log it

@@ -538,6 +538,7 @@ export const promotionalBounties = pgTable("promotional_bounties", {
   promotionalChannels: jsonb("promotional_channels").notNull().default([]),
   requiredDeliverable: text("required_deliverable"),
   rewardAmount: decimal("reward_amount", { precision: 18, scale: 8 }).notNull(),
+  rewardCurrency: text("reward_currency", { enum: ["XDC", "ROXN", "USDC"] }).notNull().default("XDC"), // Added currency type
   rewardType: text("reward_type", { enum: ["PER_SUBMISSION", "POOL", "TIERED"] }).notNull().default("PER_SUBMISSION"),
   maxSubmissions: integer("max_submissions"),
   totalRewardPool: decimal("total_reward_pool", { precision: 18, scale: 8 }),
@@ -562,6 +563,7 @@ export const promotionalSubmissions = pgTable("promotional_submissions", {
   reviewNotes: text("review_notes"),
   rewardDistributed: boolean("reward_distributed").default(false),
   rewardDistributedAt: timestamp("reward_distributed_at", { mode: 'date', withTimezone: true }),
+  rewardAmountDistributed: decimal("reward_amount_distributed", { precision: 18, scale: 8 }), // Track the actual reward amount distributed
   createdAt: timestamp("created_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
 });
@@ -577,6 +579,7 @@ export const createPromotionalBountySchema = z.object({
   promotionalChannels: z.array(z.string()).min(1, "Select at least one channel"),
   requiredDeliverable: z.string().min(1, "Required deliverable is required"),
   rewardAmount: z.string().min(1, "Reward amount is required"),
+  rewardCurrency: z.enum(["XDC", "ROXN", "USDC"]).default("XDC"), // Added currency type
   rewardType: z.enum(["PER_SUBMISSION", "POOL", "TIERED"]).default("PER_SUBMISSION"),
   maxSubmissions: z.number().int().positive().optional(),
   totalRewardPool: z.string().optional(),
