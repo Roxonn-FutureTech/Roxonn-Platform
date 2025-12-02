@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS exo_nodes (
   id TEXT PRIMARY KEY,
   user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-  wallet_address TEXT NOT NULL,
+  wallet_address TEXT NOT NULL UNIQUE,
   ip_address TEXT,
   port INTEGER,
   status TEXT DEFAULT 'offline' NOT NULL CHECK (status IN ('online', 'offline')),
