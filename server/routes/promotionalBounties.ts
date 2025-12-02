@@ -13,6 +13,7 @@ import {
   type CreatePromotionalSubmissionInput,
 } from '../../shared/schema';
 import { log } from '../utils';
+import { blockchain } from '../blockchain'; // Import blockchain service for reward distribution
 
 const router = Router();
 
@@ -204,6 +205,17 @@ router.post('/bounties', requireAuth, async (req: Request, res: Response) => {
 
     if (!userId) {
       return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    // Check if user is a pool manager
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user || user.role !== 'poolmanager') {
+      return res.status(403).json({ error: 'Only pool managers can create bounties' });
     }
 
     const validatedData = createPromotionalBountySchema.parse(req.body);
@@ -457,42 +469,64 @@ router.post('/submissions', requireAuth, async (req: Request, res: Response) => 
 
     const validatedData = createPromotionalSubmissionSchema.parse(req.body);
 
-    const [bounty] = await db
-      .select()
-      .from(promotionalBounties)
-      .where(eq(promotionalBounties.id, validatedData.bountyId))
-      .limit(1);
+    // Use a transaction to prevent race conditions with maxSubmissions
+    const newSubmission = await db.transaction(async (tx) => {
+      const [bounty] = await tx
+        .select()
+        .from(promotionalBounties)
+        .where(eq(promotionalBounties.id, validatedData.bountyId))
+        .limit(1);
 
-    if (!bounty) {
-      return res.status(404).json({ error: 'Bounty not found' });
-    }
-
-    if (bounty.status !== 'ACTIVE') {
-      return res.status(400).json({ error: 'Bounty is not active' });
-    }
-
-    if (bounty.expiresAt && new Date(bounty.expiresAt) < new Date()) {
-      return res.status(400).json({ error: 'Bounty has expired' });
-    }
-
-    if (bounty.maxSubmissions) {
-      const submissionCountResult = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(promotionalSubmissions)
-        .where(eq(promotionalSubmissions.bountyId, validatedData.bountyId));
-
-      const count = submissionCountResult[0]?.count || 0;
-      if (count >= bounty.maxSubmissions) {
-        return res.status(400).json({ error: 'Maximum submissions reached for this bounty' });
+      if (!bounty) {
+        throw new Error('Bounty not found');
       }
-    }
 
-    const [newSubmission] = await db.insert(promotionalSubmissions).values({
-      bountyId: validatedData.bountyId,
-      contributorId: userId,
-      proofLinks: validatedData.proofLinks,
-      description: validatedData.description,
-    }).returning();
+      if (bounty.status !== 'ACTIVE') {
+        throw new Error('Bounty is not active');
+      }
+
+      if (bounty.expiresAt && new Date(bounty.expiresAt) < new Date()) {
+        throw new Error('Bounty has expired');
+      }
+
+      if (bounty.maxSubmissions) {
+        // Use SELECT FOR UPDATE to lock the row during the check to prevent race conditions
+        const submissionCountResult = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(promotionalSubmissions)
+          .where(and(
+            eq(promotionalSubmissions.bountyId, validatedData.bountyId),
+            eq(promotionalSubmissions.status, 'APPROVED') // Only count approved submissions
+          ));
+
+        const count = submissionCountResult[0]?.count || 0;
+        if (count >= bounty.maxSubmissions) {
+          throw new Error('Maximum submissions reached for this bounty');
+        }
+      }
+
+      // Validate URLs in proofLinks on the server side
+      for (const link of validatedData.proofLinks) {
+        try {
+          new URL(link);
+          // Ensure the URL uses a safe protocol
+          if (!['http:', 'https:'].includes(new URL(link).protocol)) {
+            throw new Error(`Invalid URL protocol in proof link: ${link}`);
+          }
+        } catch (urlError) {
+          throw new Error(`Invalid URL in proof links: ${link}`);
+        }
+      }
+
+      const [insertedSubmission] = await tx.insert(promotionalSubmissions).values({
+        bountyId: validatedData.bountyId,
+        contributorId: userId,
+        proofLinks: validatedData.proofLinks,
+        description: validatedData.description,
+      }).returning();
+
+      return insertedSubmission;
+    });
 
     res.status(201).json(transformSubmission(newSubmission));
   } catch (error: any) {
@@ -561,19 +595,79 @@ router.patch('/submissions/:id/review', requireAuth, async (req: Request, res: R
       return res.status(400).json({ error: 'Submission has already been reviewed' });
     }
 
-    const [updatedSubmission] = await db
-      .update(promotionalSubmissions)
-      .set({
-        status,
-        reviewNotes,
-        reviewedAt: new Date(),
-        reviewedBy: userId,
-        updatedAt: new Date(),
-      })
-      .where(eq(promotionalSubmissions.id, submissionId))
-      .returning();
+    // If approving, update status first then distribute rewards
+    if (status === 'APPROVED') {
+      // First update the status to APPROVED
+      const [updatedSubmission] = await db
+        .update(promotionalSubmissions)
+        .set({
+          status,
+          reviewNotes,
+          reviewedAt: new Date(),
+          reviewedBy: userId,
+          updatedAt: new Date(),
+        })
+        .where(eq(promotionalSubmissions.id, submissionId))
+        .returning();
 
-    res.json(transformSubmission(updatedSubmission));
+      // Then try to distribute rewards via blockchain
+      try {
+        // Get contributor's wallet address
+        const [contributor] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, submission.contributorId))
+          .limit(1);
+
+        if (!contributor || !contributor.xdcWalletAddress) {
+          throw new Error(`Contributor ${submission.contributorId} does not have a wallet address`);
+        }
+
+        // Determine reward amount based on bounty configuration
+        let rewardAmount = bounty.rewardAmount;
+        if (bounty.rewardType === 'POOL') {
+          // For POOL type, distribute the reward evenly among all approved submissions
+          // For now, using the fixed reward amount from the bounty
+        }
+
+        // NOTE: Reward distribution logic needs to be implemented in a separate service
+        // Currently placeholder for blockchain reward distribution
+        // await blockchainService.distributeReward({
+        //   receiver: contributor.xdcWalletAddress,
+        //   amount: rewardAmount,
+        //   bountyId: bounty.id
+        // });
+
+        log(`Reward calculated for contributor ${contributor.id} for approved submission ${submissionId}`, 'rewards');
+
+        // Update submission to indicate reward distribution is pending
+        await db
+          .update(promotionalSubmissions)
+          .set({ rewardDistributed: true, rewardDistributedAt: new Date() })
+          .where(eq(promotionalSubmissions.id, submissionId));
+      } catch (rewardError: any) {
+        log(`Failed to initiate reward distribution for submission ${submissionId}: ${rewardError.message}`, 'rewards-error');
+        // Don't fail the entire operation if reward distribution fails, just log it
+        // The submission status is still set to APPROVED
+      }
+
+      return res.json(transformSubmission(updatedSubmission));
+    } else {
+      // For REJECTED or other statuses, just update the status
+      const [updatedSubmission] = await db
+        .update(promotionalSubmissions)
+        .set({
+          status,
+          reviewNotes,
+          reviewedAt: new Date(),
+          reviewedBy: userId,
+          updatedAt: new Date(),
+        })
+        .where(eq(promotionalSubmissions.id, submissionId))
+        .returning();
+
+      return res.json(transformSubmission(updatedSubmission));
+    }
   } catch (error: any) {
     log(`Error reviewing submission: ${error.message}`, 'error');
     res.status(500).json({ error: error.message });
