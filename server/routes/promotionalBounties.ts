@@ -13,6 +13,8 @@ import {
   type CreatePromotionalSubmissionInput,
 } from '../../shared/schema';
 import { log } from '../utils';
+import { blockchain } from '../blockchain'; // Import blockchain service for actual reward distribution
+import { ethers } from 'ethers'; // Import ethers for unit conversions
 
 const router = Router();
 
@@ -145,7 +147,18 @@ router.get('/bounties/promotional', async (req: Request, res: Response) => {
       repository: r.repository,
     }));
 
+    // Validate channel parameter to prevent injection attacks
     if (channel) {
+      const allowedChannels = [
+        "Twitter/X", "LinkedIn", "Facebook", "Instagram", "YouTube",
+        "TikTok", "Blog", "Newsletter", "Podcast", "Discord",
+        "Reddit", "GitHub", "Other"
+      ];
+
+      if (!allowedChannels.includes(channel as string)) {
+        return res.status(400).json({ error: 'Invalid channel parameter' });
+      }
+
       transformedBounties = transformedBounties.filter((b: any) =>
         b.promotionalChannels?.includes(channel as string)
       );
@@ -627,45 +640,45 @@ router.patch('/submissions/:id/review', requireAuth, async (req: Request, res: R
           throw new Error(`Contributor ${submission.contributorId} does not have a wallet address`);
         }
 
+        let rewardAmount = "";
+        let rewardCurrency = bounty.rewardCurrency || 'XDC';
+
         // For POOL type, calculate reward amount based on max submissions if available, otherwise use total pool / total allowed
         if (bounty.rewardType === 'POOL' && bounty.totalRewardPool) {
           // Calculate reward per submission based on max submissions if available
           // If maxSubmissions is not set, use a fallback (e.g., 10) or just use the current approved count
           const maxSubmissions = bounty.maxSubmissions || 1; // Default to 1 if no max submissions specified
           const totalPool = parseFloat(bounty.totalRewardPool);
-          const rewardAmount = (totalPool / maxSubmissions).toString();
+          rewardAmount = (totalPool / maxSubmissions).toString();
 
           log(`Calculated pool reward amount (${rewardAmount}) for contributor ${contributor.id} for approved submission ${submissionId} based on total pool of ${bounty.totalRewardPool} divided among ${maxSubmissions} max submissions`, 'rewards');
-
-          // Update submission to indicate reward distribution is pending
-          await db
-            .update(promotionalSubmissions)
-            .set({
-              rewardDistributed: true,
-              rewardDistributedAt: new Date(),
-              rewardAmountDistributed: rewardAmount // Track the actual reward amount distributed
-            })
-            .where(eq(promotionalSubmissions.id, submissionId));
         } else {
           // For PER_SUBMISSION or other types, use the fixed reward amount
-          const rewardAmount = bounty.rewardAmount;
+          rewardAmount = bounty.rewardAmount;
 
           log(`Using fixed reward amount (${rewardAmount}) for contributor ${contributor.id} for approved submission ${submissionId}`, 'rewards');
-
-          // Update submission to indicate reward distribution is pending
-          await db
-            .update(promotionalSubmissions)
-            .set({
-              rewardDistributed: true,
-              rewardDistributedAt: new Date(),
-              rewardAmountDistributed: rewardAmount // Track the actual reward amount distributed
-            })
-            .where(eq(promotionalSubmissions.id, submissionId));
         }
+
+        // NOTE: Actual reward distribution via blockchain should be implemented here
+        // For now, we're only tracking that the reward should be distributed in the database
+        // The real implementation would depend on the specific blockchain service integration
+
+        // For Phase 1 implementation, just mark reward as pending for admin to distribute later
+        await db
+          .update(promotionalSubmissions)
+          .set({
+            rewardDistributed: false, // Changed to false since we haven't distributed yet
+            rewardDistributedAt: null, // No distribution time yet
+            rewardAmountDistributed: rewardAmount,
+            rewardCurrencyDistributed: rewardCurrency // Track which currency was designated
+          })
+          .where(eq(promotionalSubmissions.id, submissionId));
+
+        log(`Reward distribution marked as pending for submission ${submissionId} to contributor ${contributor.id}`, 'rewards');
       } catch (rewardError: any) {
-        log(`Failed to initiate reward distribution for submission ${submissionId}: ${rewardError.message}`, 'rewards-error');
-        // Don't fail the entire operation if reward distribution fails, just log it
-        // The submission status is still set to APPROVED
+        log(`Failed to process reward distribution for submission ${submissionId}: ${rewardError.message}`, 'rewards-error');
+        // Don't fail the entire operation if reward processing fails, just log it
+        // The submission status is still set to APPROVED but rewardDistributed will remain false
       }
 
       return res.json(transformSubmission(updatedSubmission));

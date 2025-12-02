@@ -564,6 +564,8 @@ export const promotionalSubmissions = pgTable("promotional_submissions", {
   rewardDistributed: boolean("reward_distributed").default(false),
   rewardDistributedAt: timestamp("reward_distributed_at", { mode: 'date', withTimezone: true }),
   rewardAmountDistributed: decimal("reward_amount_distributed", { precision: 18, scale: 8 }), // Track the actual reward amount distributed
+  rewardCurrencyDistributed: text("reward_currency_distributed", { enum: ["XDC", "ROXN", "USDC"] }), // Track which currency was distributed
+  rewardDistributionFailureReason: text("reward_distribution_failure_reason"), // Record reason if reward distribution fails
   createdAt: timestamp("created_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
 });
