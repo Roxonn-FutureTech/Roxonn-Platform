@@ -10,6 +10,6 @@ CREATE TABLE IF NOT EXISTS exo_nodes (
   UNIQUE (ip_address, port)
 );
 
-CREATE INDEX idx_exo_nodes_user_id ON exo_nodes(user_id);
-CREATE INDEX idx_exo_nodes_status ON exo_nodes(status);
-CREATE INDEX idx_exo_nodes_wallet_address ON exo_nodes(wallet_address);
+CREATE INDEX IF NOT EXISTS idx_exo_nodes_user_id ON exo_nodes(user_id);
+CREATE INDEX IF NOT EXISTS idx_exo_nodes_status ON exo_nodes(status);
+CREATE INDEX IF NOT EXISTS idx_exo_nodes_wallet_address ON exo_nodes(wallet_address);
