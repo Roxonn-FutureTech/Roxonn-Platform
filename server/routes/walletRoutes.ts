@@ -398,33 +398,6 @@ router.get('/sell-xdc-url', requireAuth, csrfProtection, async (req, res) => {
 });
 
 // Get onramp.money transactions for user wallet
-/**
- * @openapi
- * /api/wallet/onramp-transactions:
- *   get:
- *     summary: Get Onramp.money transaction history
- *     tags: [Wallet]
- *     security:
- *       - cookieAuth: []
- *     parameters:
- *       - in: query
- *         name: limit
- *         schema: { type: integer, default: 10 }
- *     responses:
- *       200:
- *         description: List of onramp transactions
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 transactions:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/OnrampTransaction'
- *       401:
- *         description: Unauthorized
- */
 router.get('/onramp-transactions', requireAuth, csrfProtection, async (req, res) => {
   try {
     const user = req.user;
@@ -451,28 +424,6 @@ router.get('/onramp-transactions', requireAuth, csrfProtection, async (req, res)
 });
 
 // Endpoint to request an OTP for wallet export
-/**
- * @openapi
- * /api/wallet/export-request:
- *   post:
- *     summary: Request OTP for wallet export
- *     tags: [Wallet]
- *     security:
- *       - cookieAuth: []
- *     responses:
- *       200:
- *         description: OTP sent successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success: { type: boolean }
- *       400:
- *         description: Bad request (e.g., no email)
- *       401:
- *         description: Unauthorized
- */
 router.post('/export-request', requireAuth, csrfProtection, async (req: Request, res: Response) => {
   try {
     if (!req.user) return res.status(401).json({ error: 'Auth required' });
@@ -482,8 +433,8 @@ router.post('/export-request', requireAuth, csrfProtection, async (req: Request,
 
     if (!email) return res.status(400).json({ error: 'No email on account' });
 
-    // Generate 6-digit numeric code using cryptographically secure random
-    const code = crypto.randomInt(100000, 1000000).toString();
+    // Generate 6-digit numeric code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expires = Date.now() + 5 * 60 * 1000; // 5 min
 
     otpStore.set(userId, { code, expires });
@@ -498,40 +449,6 @@ router.post('/export-request', requireAuth, csrfProtection, async (req: Request,
 });
 
 // Wallet export endpoint for MetaMask integration
-/**
- * @openapi
- * /api/wallet/export-data:
- *   post:
- *     summary: Export wallet data (encrypted)
- *     tags: [Wallet]
- *     security:
- *       - cookieAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - otp
- *               - ephemeralPublicKey
- *             properties:
- *               otp: { type: string }
- *               ephemeralPublicKey: { type: string }
- *     responses:
- *       200:
- *         description: Encrypted wallet data
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/WalletExportResponse'
- *       401:
- *         description: Unauthorized or Invalid OTP
- *       403:
- *         description: Forbidden (Role access or Rate limit)
- *       429:
- *         description: Rate limit exceeded
- */
 router.post('/export-data', requireAuth, csrfProtection, requireOtp, async (req: Request, res: Response) => {
   try {
     if (!req.user) {
@@ -667,8 +584,6 @@ router.post('/export-data', requireAuth, csrfProtection, requireOtp, async (req:
  *         description: Transaction submitted successfully
  *       400:
  *         description: Invalid input or insufficient funds
- *       429:
- *         description: Transfer limit exceeded
  *       401:
  *         description: Unauthorized
  */
@@ -694,18 +609,6 @@ router.post('/send', requireAuth, csrfProtection, async (req, res) => {
         addressToValidate = '0x' + addressToValidate.substring(3);
       }
       checksumAddress = ethers.getAddress(addressToValidate);
-
-      // Prevent sending to self (QODO suggestion)
-      if (user.xdcWalletAddress) {
-        let senderAddressToValidate = user.xdcWalletAddress;
-        if (senderAddressToValidate.toLowerCase().startsWith('xdc')) {
-          senderAddressToValidate = '0x' + senderAddressToValidate.substring(3);
-        }
-        const senderAddress = ethers.getAddress(senderAddressToValidate);
-        if (checksumAddress === senderAddress) {
-          return res.status(400).json({ error: 'Recipient address cannot be the same as sender address' });
-        }
-      }
     } catch (e) {
       return res.status(400).json({ error: 'Invalid recipient address format' });
     }
@@ -724,7 +627,7 @@ router.post('/send', requireAuth, csrfProtection, async (req, res) => {
     // Check transfer limits
     const limitCheck = transferLimits.checkTransferLimit(user.id.toString(), parseFloat(ethers.formatEther(sendAmount)));
     if (!limitCheck.allowed) {
-      return res.status(429).json({ error: limitCheck.reason || 'Transfer limit exceeded' });
+      return res.status(400).json({ error: limitCheck.reason || 'Transfer limit exceeded' });
     }
 
     log(`User ${user.id} initiating send of ${ethers.formatEther(sendAmount)} XDC`, 'routes'); // Log without PII (recipient)

@@ -13,7 +13,6 @@ import promotionalBountiesRoutes from './promotionalBounties';
 import walletRoutes from './walletRoutes';
 import multiCurrencyWalletRoutes from './multiCurrencyWallet';
 import aiScopingAgentRouter from './aiScopingAgent';
-import leaderboardRoutes from './leaderboardRoutes';
 
 /**
  * Register all modular route handlers
@@ -49,7 +48,7 @@ export function registerModularRoutes(app: Express) {
 
   // Wallet routes (main wallet operations)
   app.use('/api/wallet', walletRoutes);
-
+  
   // Multi-currency wallet routes (additional wallet features)
   app.use('/api/wallet', multiCurrencyWalletRoutes);
 
@@ -61,8 +60,5 @@ export function registerModularRoutes(app: Express) {
 
   // AI Scoping Agent routes (already modular)
   app.use('/api/ai-scoping', aiScopingAgentRouter);
-
-  // Leaderboard routes
-  app.use('/api/leaderboard', leaderboardRoutes);
 }
 

@@ -27,7 +27,6 @@ import ReposExplorerPage from "@/pages/repos-explorer-page";
 import WalletNewPage from "@/pages/wallet-new-page";
 import ContributionsPage from "@/pages/contributions-page";
 import MembershipNewPage from "@/pages/membership-new-page";
-import LeaderboardPage from "@/pages/leaderboard-page";
 import PromotionalBountiesPage from "@/pages/promotional-bounties-page";
 import PromotionalBountiesCreatePage from "@/pages/promotional-bounties-create-page";
 import PromotionalBountiesDetailPage from "@/pages/promotional-bounties-detail-page";
@@ -91,7 +90,6 @@ function Router() {
           <Route path="/repos/:owner/:name" component={RepoDetailsPage} />
           <Route path="/wallet" component={WalletNewPage} />
           <Route path="/contributions" component={ContributionsPage} />
-          <Route path="/leaderboard" component={LeaderboardPage} />
           <Route path="/membership" component={MembershipNewPage} />
           <Route path="/referrals" component={ReferralsPage} />
           <Route path="/profile" component={ProfilePage} />

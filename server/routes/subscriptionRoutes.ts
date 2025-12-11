@@ -10,32 +10,6 @@ import { eq } from 'drizzle-orm';
 const router = Router();
 
 // Initialize merchant payment (Tatum Onramp Merchant Widget)
-/**
- * @openapi
- * /api/subscription/merchant/init:
- *   post:
- *     summary: Initialize merchant payment
- *     tags: [Subscriptions]
- *     security:
- *       - cookieAuth: []
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               fiatType: { type: integer }
- *               logoUrl: { type: string }
- *     responses:
- *       200:
- *         description: Merchant checkout config
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/MerchantCheckoutConfig'
- *       401:
- *         description: Unauthorized
- */
 router.post('/merchant/init', requireAuth, csrfProtection, async (req, res) => {
   try {
     const user = req.user;
@@ -150,25 +124,6 @@ router.post('/crypto/init', requireAuth, csrfProtection, async (req, res) => {
 });
 
 // Get list of supported networks for crypto payment
-/**
- * @openapi
- * /api/subscription/crypto/networks:
- *   get:
- *     summary: Get supported crypto networks
- *     tags: [Subscriptions]
- *     responses:
- *       200:
- *         description: List of supported networks
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   chainId: { type: string }
- *                   name: { type: string }
- */
 router.get('/crypto/networks', async (req, res) => {
   try {
     const { SUPPORTED_CRYPTO_NETWORKS } = await import('../onrampCryptoService');
@@ -180,23 +135,6 @@ router.get('/crypto/networks', async (req, res) => {
 });
 
 // Get list of supported currencies for subscription payment
-/**
- * @openapi
- * /api/subscription/currencies:
- *   get:
- *     summary: Get supported currencies
- *     tags: [Subscriptions]
- *     responses:
- *       200:
- *         description: List of currencies
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 popular: { type: array, items: { type: object } }
- *                 all: { type: array, items: { type: object } }
- */
 router.get('/currencies', async (req, res) => {
   try {
     const { getAllCurrencies, getPopularCurrencies } = await import('../currencyConfig');
@@ -250,12 +188,12 @@ router.get('/status', requireAuth, csrfProtection, async (req, res) => {
       periodEnd: status.periodEnd,
       subscription: status.subscription
         ? {
-          id: status.subscription.id,
-          plan: status.subscription.plan,
-          status: status.subscription.status,
-          currentPeriodStart: status.subscription.currentPeriodStart,
-          currentPeriodEnd: status.subscription.currentPeriodEnd,
-        }
+            id: status.subscription.id,
+            plan: status.subscription.plan,
+            status: status.subscription.status,
+            currentPeriodStart: status.subscription.currentPeriodStart,
+            currentPeriodEnd: status.subscription.currentPeriodEnd,
+          }
         : undefined,
     });
   } catch (error) {
@@ -266,34 +204,6 @@ router.get('/status', requireAuth, csrfProtection, async (req, res) => {
 });
 
 // Manual payment verification endpoint
-/**
- * @openapi
- * /api/subscription/verify-payment:
- *   post:
- *     summary: Verify manual payment
- *     tags: [Subscriptions]
- *     security:
- *       - cookieAuth: []
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               orderId: { type: string }
- *               txHash: { type: string }
- *               referenceId: { type: string }
- *               timestamp: { type: string }
- *     responses:
- *       200:
- *         description: Verification result
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/PaymentVerificationResult'
- *       401:
- *         description: Unauthorized
- */
 router.post('/verify-payment', requireAuth, csrfProtection, async (req, res) => {
   try {
     const user = req.user;
@@ -347,27 +257,6 @@ router.post('/verify-payment', requireAuth, csrfProtection, async (req, res) => 
 });
 
 // Get user's pending payments
-/**
- * @openapi
- * /api/subscription/pending-payments:
- *   get:
- *     summary: Get pending payments
- *     tags: [Subscriptions]
- *     security:
- *       - cookieAuth: []
- *     responses:
- *       200:
- *         description: List of pending payments
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success: { type: boolean }
- *                 payments: { type: array, items: { $ref: '#/components/schemas/OnrampTransaction' } }
- *       401:
- *         description: Unauthorized
- */
 router.get('/pending-payments', requireAuth, csrfProtection, async (req, res) => {
   try {
     const user = req.user;
@@ -395,37 +284,6 @@ router.get('/pending-payments', requireAuth, csrfProtection, async (req, res) =>
 });
 
 // Confirm payment verification (for timestamp-based verification)
-/**
- * @openapi
- * /api/subscription/confirm-verification:
- *   post:
- *     summary: Confirm payment verification
- *     tags: [Subscriptions]
- *     security:
- *       - cookieAuth: []
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - transactionId
- *               - confirm
- *             properties:
- *               transactionId: { type: integer }
- *               confirm: { type: boolean }
- *               orderId: { type: string }
- *               txHash: { type: string }
- *     responses:
- *       200:
- *         description: Confirmation result
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/PaymentVerificationResult'
- *       401:
- *         description: Unauthorized
- */
 router.post('/confirm-verification', requireAuth, csrfProtection, async (req, res) => {
   try {
     const user = req.user;

@@ -47,7 +47,6 @@ describe('NavigationBar', () => {
         id: 1,
         username: 'testuser',
         avatarUrl: 'https://example.com/avatar.jpg',
-        promptBalance: 0,
       },
       loading: false,
       signOut: vi.fn(),
@@ -63,7 +62,7 @@ describe('NavigationBar', () => {
     });
 
     render(<NavigationBar />);
-
+    
     // Check if user info is displayed
     expect(screen.getByText(/testuser/i)).toBeDefined();
   });
@@ -81,7 +80,7 @@ describe('NavigationBar', () => {
     });
 
     render(<NavigationBar />);
-
+    
     // Should show sign in option or similar
     expect(screen.queryByText(/testuser/i)).toBeNull();
   });
@@ -91,7 +90,6 @@ describe('NavigationBar', () => {
       user: {
         id: 1,
         username: 'testuser',
-        promptBalance: 0,
       },
       loading: false,
       signOut: vi.fn(),
@@ -107,7 +105,7 @@ describe('NavigationBar', () => {
     });
 
     render(<NavigationBar />);
-
+    
     // Wallet info should be available in component
     expect(useWallet).toHaveBeenCalled();
   });
@@ -125,27 +123,9 @@ describe('NavigationBar', () => {
     });
 
     render(<NavigationBar />);
-
+    
     // Component should handle loading state
     expect(useAuth).toHaveBeenCalled();
-  });
-
-  it('should display leaderboard link', () => {
-    (useAuth as any).mockReturnValue({
-      user: null,
-      loading: false,
-      signOut: vi.fn(),
-    });
-
-    (useWallet as any).mockReturnValue({
-      data: null,
-      isLoading: false,
-    });
-
-    render(<NavigationBar />);
-
-    // Check if leaderboard link is present
-    expect(screen.getAllByText(/Leaderboard/i).length).toBeGreaterThan(0);
   });
 });
 
