@@ -85,14 +85,14 @@ Implementation details in `/docs/FEATURES/PRIVATE_REPOS.md`
 ```
 /server           - Express backend server
   index.ts        - Server entry point with middleware setup
-  routes.ts       - All API route definitions (34K+ tokens file)
+  routes.ts       - Thin wrapper that delegates to modular routes
   blockchain.ts   - XDC blockchain interaction service
   walletService.ts- Wallet management & Tatum integration
   auth.ts         - GitHub OAuth & JWT authentication
   db.ts           - PostgreSQL with Drizzle ORM
   config.ts       - Configuration management (env vars + AWS SSM)
   /services       - Business logic services
-  /routes         - Additional route modules
+  /routes         - Modular route handlers (see below)
 
 /client          - React frontend
   /src/pages     - Application pages
@@ -112,6 +112,30 @@ Implementation details in `/docs/FEATURES/PRIVATE_REPOS.md`
 
 /migrations      - Database migrations
   0013_add_subscriptions.sql - Latest: subscription tables
+```
+
+### Modular Routes Structure
+
+Routes are organized in `server/routes/` with each file handling a specific domain:
+
+```
+/server/routes
+  index.ts              - registerModularRoutes() - registers all route modules
+  authRoutes.ts         - /api/auth/* - Authentication endpoints
+  blockchainRoutes.ts   - /api/blockchain/* - Blockchain operations
+  walletRoutes.ts       - /api/wallet/* - Wallet operations
+  subscriptionRoutes.ts - /api/subscription/* - Subscription management
+  repositoryRoutes.ts   - /api/* - Repository management
+  adminRoutes.ts        - /api/admin/* - Admin operations
+  nodeRoutes.ts         - /api/node/* - Compute node endpoints
+  webhookRoutes.ts      - /webhook/* - GitHub App & payment webhooks
+  aiRoutes.ts           - /api/vscode/* - AI completions
+  miscRoutes.ts         - /health, /api/courses/*, /api/zoho/* - Misc endpoints
+  referralRoutes.ts     - /api/referral/* - Referral system
+  promotionalBounties.ts- /api/promotional/* - Promotional bounties
+  multiCurrencyWallet.ts- /api/wallet/* - Multi-currency features
+  leaderboardRoutes.ts  - /api/leaderboard/* - Leaderboard endpoints
+  aiScopingAgent.ts     - /api/ai-scoping/* - AI scoping agent
 ```
 
 ### Active Smart Contracts
@@ -268,10 +292,11 @@ CONTRIBUTOR_FEE_RATE   # Default 50 (0.5% from contributor payout)
 ### Common Development Tasks
 
 **Adding New API Endpoint**
-1. Add route handler in `server/routes.ts` (large file, be careful)
-2. Add business logic in appropriate service
-3. Update TypeScript types in `shared/schema.ts`
-4. Apply authentication middleware as needed
+1. Identify the appropriate route module in `server/routes/` (e.g., walletRoutes.ts for wallet endpoints)
+2. Add route handler to that module with proper middleware (requireAuth, csrfProtection)
+3. Add business logic in appropriate service file
+4. Update TypeScript types in `shared/schema.ts` if needed
+5. Note: Route paths are relative to the module's mount point (e.g., `/send` in walletRoutes.ts becomes `/api/wallet/send`)
 
 **Modifying Smart Contracts**
 1. Update contract in `/contracts` (avoid legacy files)
@@ -286,16 +311,17 @@ CONTRIBUTOR_FEE_RATE   # Default 50 (0.5% from contributor payout)
 3. Run `npm run db:push`
 4. Test queries in relevant services
 
-**Testing (Note: Test files not yet implemented)**
-- Tests referenced in package.json but files don't exist
-- Vitest configured but no test files present
+**Testing**
+- Route tests in `server/routes/__tests__/` using Vitest
+- Run tests with `npm test`
 - Contract tests would use Hardhat
 
 ### Important Warnings
 
-1. **Large Files**: `server/routes.ts` is 34K+ tokens - read in chunks
+1. **Modular Routes**: All API routes are in `server/routes/*.ts` - do NOT add routes to the old monolithic pattern
 2. **Legacy Contracts**: RepoRewards.sol, RoxnRewards.sol, USDCRepoRewards.sol are deprecated
 3. **Multiple Deployments**: Many scripts in `/scripts` are for rollbacks/migrations
-4. **Test Coverage**: No test files currently exist despite package.json scripts
+4. **Test Coverage**: Test files exist in `server/routes/__tests__/` using Vitest
 5. **Rate Limits**: Be aware of rate limiting on auth endpoints
 6. **Unused Code**: OAuth upgrade endpoints in `auth.ts` and upgrade banner in `my-repositories.tsx` are unused (GitHub App approach is used instead)
+7. **Route Mount Points**: When adding endpoints, remember the route path is relative to the mount point defined in `routes/index.ts`

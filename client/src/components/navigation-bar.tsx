@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ethers } from "ethers";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader2, LogOut, User, HelpCircle, Code, BookOpen, AlertCircle, Menu, X, Wallet, Crown, Gift, Zap, Coins, Shield } from "lucide-react";
+import { Loader2, LogOut, User, HelpCircle, Code, BookOpen, AlertCircle, Menu, X, Wallet, Crown, Gift, Zap, Coins, Shield, Trophy } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -206,6 +206,12 @@ export function NavigationBar() {
               </Button>
             </Link>
           )}
+          <Link href="/leaderboard">
+            <Button variant="ghost" className="text-muted-foreground hover:text-cyan-400 hover:bg-cyan-500/10">
+              <Trophy className="mr-2 h-5 w-5" />
+              Leaderboard
+            </Button>
+          </Link>
           <Link href="/repos">
             <Button variant="ghost" className="text-muted-foreground hover:text-cyan-400 hover:bg-cyan-500/10">
               Explore
@@ -400,6 +406,12 @@ export function NavigationBar() {
                         </Button>
                       </Link>
                     )}
+                    <Link href="/leaderboard" className="block">
+                      <Button variant="ghost" className="w-full justify-start h-12 hover:bg-cyan-500/10 hover:text-cyan-400" onClick={() => setMobileMenuOpen(false)}>
+                        <Trophy className="mr-2 h-5 w-5" />
+                        Leaderboard
+                      </Button>
+                    </Link>
                     <Link href="/repos" className="block">
                       <Button variant="ghost" className="w-full justify-start h-12 hover:bg-cyan-500/10 hover:text-cyan-400" onClick={() => setMobileMenuOpen(false)}>
                         Explore

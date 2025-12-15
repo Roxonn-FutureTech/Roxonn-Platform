@@ -27,10 +27,40 @@ interface WalletBalance {
  * Get single XDC wallet balances for a user
  * GET /api/wallet/multi-currency-balances/:userId
  */
+/**
+ * @openapi
+ * /api/wallet/multi-currency-balances/{userId}:
+ *   get:
+ *     summary: Get single XDC wallet balances for a user
+ *     tags: [Wallet]
+ *     security:
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: List of wallet balances
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/WalletBalance'
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Access denied
+ *       404:
+ *         description: User not found
+ */
 router.get('/multi-currency-balances/:userId', requireAuth, async (req, res) => {
   try {
     const userId = parseInt(req.params.userId);
-    
+
     // Verify user can access this data (either themselves or a pool manager checking their contributors)
     if (req.user?.id !== userId) {
       return res.status(403).json({ error: 'Access denied' });
@@ -75,7 +105,7 @@ router.get('/multi-currency-balances/:userId', requireAuth, async (req, res) => 
             address: user.xdcWalletAddress
           });
         }
-        
+
         // Get USDC balance on XDC
         const usdcBalance = await walletService.getUSDCBalance(user.xdcWalletAddress);
         if (usdcBalance) {
@@ -104,10 +134,42 @@ router.get('/multi-currency-balances/:userId', requireAuth, async (req, res) => 
  * Get supported currencies and networks
  * GET /api/wallet/supported-currencies
  */
+/**
+ * @openapi
+ * /api/wallet/supported-currencies:
+ *   get:
+ *     summary: Get supported currencies and networks
+ *     tags: [Wallet]
+ *     responses:
+ *       200:
+ *         description: Supported currencies configuration
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 currencies:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       name: { type: string }
+ *                       network: { type: string }
+ *                       chainId: { type: integer }
+ *                       nativeCurrency: { type: object }
+ *                 supportedTokens:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       symbol: { type: string }
+ *                       address: { type: string }
+ *                       decimals: { type: integer }
+ */
 router.get('/supported-currencies', async (req, res) => {
   try {
     const supportedNetworks = walletService.getSupportedNetworks();
-    
+
     const currencies = Object.entries(supportedNetworks).map(([networkKey, config]) => ({
       network: networkKey,
       networkName: config.name,

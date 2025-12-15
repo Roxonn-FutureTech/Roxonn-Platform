@@ -1179,23 +1179,84 @@ export class BlockchainService {
                                     
                                     if (txTo === ethAddress.toLowerCase() ||
                                         txFrom === ethAddress.toLowerCase()) {
-                                        
+
                                         const txValue = tx.value ? tx.value.toString() : '0';
-                                        
+
+                                        // Check for token transfers by getting transaction receipt
+                                        let tokenSymbol: string | undefined;
+                                        let tokenAmount: string | undefined;
+                                        let actualFrom = tx.from || '';
+                                        let actualTo = tx.to || '';
+                                        let isIncoming = txTo === ethAddress.toLowerCase();
+
+                                        // ERC-20 Transfer event topic
+                                        const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+                                        const roxnAddress = config.roxnTokenAddress.toLowerCase();
+                                        const usdcAddress = config.usdcXdcAddress.toLowerCase();
+
+                                        try {
+                                            const receipt = await this.provider.getTransactionReceipt(tx.hash);
+                                            if (receipt && receipt.logs) {
+                                                for (const log of receipt.logs) {
+                                                    // Check if this is a Transfer event
+                                                    if (log.topics[0] === TRANSFER_TOPIC) {
+                                                        const logAddress = log.address.toLowerCase();
+
+                                                        // Check if it's ROXN or USDC token
+                                                        if (logAddress === roxnAddress || logAddress === usdcAddress) {
+                                                            // Decode Transfer event: Transfer(from, to, value)
+                                                            const from = '0x' + log.topics[1].slice(26);
+                                                            const to = '0x' + log.topics[2].slice(26);
+                                                            const value = BigInt(log.data);
+
+                                                            // Check if user is involved in this transfer
+                                                            if (from.toLowerCase() === ethAddress.toLowerCase() ||
+                                                                to.toLowerCase() === ethAddress.toLowerCase()) {
+
+                                                                tokenSymbol = logAddress === roxnAddress ? 'ROXN' : 'USDC';
+                                                                // Both ROXN and USDC use 18 decimals
+                                                                tokenAmount = ethers.formatEther(value);
+                                                                actualFrom = from;
+                                                                actualTo = to;
+                                                                isIncoming = to.toLowerCase() === ethAddress.toLowerCase();
+                                                                break; // Found the relevant transfer
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        } catch (receiptError) {
+                                            // If we can't get receipt, continue with native XDC info
+                                            log(`Error getting receipt for ${tx.hash}: ${receiptError}`, "blockchain");
+                                        }
+
+                                        // If no token transfer found and native value is 0, skip this transaction
+                                        if (!tokenSymbol && txValue === '0') {
+                                            continue;
+                                        }
+
+                                        // Set defaults for native XDC transfers
+                                        if (!tokenSymbol && BigInt(txValue) > BigInt(0)) {
+                                            tokenSymbol = 'XDC';
+                                            tokenAmount = ethers.formatEther(txValue);
+                                        }
+
                                         const txDetails: Transaction = {
                                             hash: tx.hash,
                                             blockNumber: block.number,
-                                            from: tx.from || '',
-                                            to: tx.to || '',
+                                            from: actualFrom,
+                                            to: actualTo,
                                             value: txValue,
                                             timestamp: block.timestamp ? new Date(Number(block.timestamp) * 1000).toISOString() : new Date().toISOString(),
                                             confirmations: currentBlock - block.number + 1,
-                                            isIncoming: txTo === ethAddress.toLowerCase(),
-                                            status: (currentBlock - block.number + 1) >= 12 ? 'confirmed' as const : 'pending' as const
+                                            isIncoming: isIncoming,
+                                            status: (currentBlock - block.number + 1) >= 12 ? 'confirmed' as const : 'pending' as const,
+                                            tokenSymbol,
+                                            tokenAmount
                                         };
-                                        
+
                                         transactions.push(txDetails);
-                                        
+
                                         if (transactions.length >= limit) {
                                             return;
                                         }
@@ -1663,4 +1724,6 @@ interface Transaction {
     confirmations: number;
     isIncoming: boolean;
     status: 'confirmed' | 'pending';
+    tokenSymbol?: string;  // 'XDC', 'ROXN', 'USDC', etc.
+    tokenAmount?: string;  // Formatted token amount
 }

@@ -1,4 +1,6 @@
 // Using Web Crypto API for secure client-side encryption/decryption
+import { base64ToUint8Array } from "./utils";
+
 // Interface for encryption metadata with required salt
 interface EncryptionMetadata {
   salt: string;
@@ -8,33 +10,33 @@ interface EncryptionMetadata {
 }
 
 export async function decryptPrivateKey(
-  encryptedData: string, 
-  password: string, 
+  encryptedData: string,
+  password: string,
   metadata: EncryptionMetadata
 ): Promise<string> {
   try {
     // Convert base64 encrypted data to array buffer
-    const encryptedBytes = Uint8Array.from(atob(encryptedData), c => c.charCodeAt(0));
-    
+    const encryptedBytes = base64ToUint8Array(encryptedData);
+
     // Convert password to key using PBKDF2
     const encoder = new TextEncoder();
     const passwordBuffer = encoder.encode(password);
-    
+
     // Salt must be provided in metadata for security
     if (!metadata?.salt) {
       throw new Error('Encryption salt is required for decryption');
     }
-    const salt = Uint8Array.from(atob(metadata.salt), c => c.charCodeAt(0));
-    
+    const salt = base64ToUint8Array(metadata.salt);
+
     // Generate key from password
     const key = await window.crypto.subtle.importKey(
-      'raw', 
-      passwordBuffer, 
-      { name: 'PBKDF2' }, 
-      false, 
+      'raw',
+      passwordBuffer,
+      { name: 'PBKDF2' },
+      false,
       ['deriveKey']
     );
-    
+
     const derivedKey = await window.crypto.subtle.deriveKey(
       {
         name: 'PBKDF2',
@@ -47,11 +49,11 @@ export async function decryptPrivateKey(
       false,
       ['decrypt']
     );
-    
+
     // Extract IV from the beginning of encrypted data (first 12 bytes)
     const iv = encryptedBytes.slice(0, 12);
     const ciphertext = encryptedBytes.slice(12);
-    
+
     // Decrypt
     const decrypted = await window.crypto.subtle.decrypt(
       {
@@ -61,7 +63,7 @@ export async function decryptPrivateKey(
       derivedKey,
       ciphertext
     );
-    
+
     // Convert result to string
     const decoder = new TextDecoder();
     return decoder.decode(decrypted);

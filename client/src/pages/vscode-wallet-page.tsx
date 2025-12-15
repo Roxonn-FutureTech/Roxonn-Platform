@@ -159,7 +159,7 @@ export default function VSCodeWalletPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-4xl font-bold font-mono gradient-text-purple">
-                        {user?.aiCredits !== undefined ? user.aiCredits : 0}
+                        {user?.promptBalance !== undefined ? user.promptBalance : 0}
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">credits remaining</p>
                     </div>

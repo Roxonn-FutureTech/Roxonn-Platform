@@ -129,6 +129,98 @@ const options: swaggerJsdoc.Options = {
                             }
                         }
                     }
+                },
+                WalletBalance: {
+                    type: 'object',
+                    properties: {
+                        currency: { type: 'string' },
+                        network: { type: 'string' },
+                        balance: { type: 'string' },
+                        usdValue: { type: 'string' },
+                        address: { type: 'string' }
+                    }
+                },
+                WalletExportResponse: {
+                    type: 'object',
+                    properties: {
+                        success: { type: 'boolean' },
+                        address: { type: 'string' },
+                        cipherText: { type: 'string' },
+                        iv: { type: 'string' },
+                        serverPublicKey: { type: 'string' },
+                        networkConfig: { type: 'object' }
+                    }
+                },
+                OnrampTransaction: {
+                    type: 'object',
+                    properties: {
+                        id: { type: 'integer' },
+                        userId: { type: 'integer' },
+                        walletAddress: { type: 'string' },
+                        merchantRecognitionId: { type: 'string' },
+                        status: { type: 'string' },
+                        fiatCurrency: { type: 'string' },
+                        metadata: { type: 'object' },
+                        createdAt: { type: 'string', format: 'date-time' }
+                    }
+                },
+                MerchantCheckoutConfig: {
+                    type: 'object',
+                    properties: {
+                        merchantId: { type: 'string' },
+                        merchantRecognitionId: { type: 'string' },
+                        walletAddress: { type: 'string' },
+                        fiatType: { type: 'integer' },
+                        logoUrl: { type: 'string' }
+                    }
+                },
+                CryptoPaymentIntent: {
+                    type: 'object',
+                    properties: {
+                        address: { type: 'string' },
+                        amount: { type: 'string' },
+                        currency: { type: 'string' },
+                        network: { type: 'string' }
+                    }
+                },
+                PaymentVerificationResult: {
+                    type: 'object',
+                    properties: {
+                        success: { type: 'boolean' },
+                        message: { type: 'string' },
+                        subscription: { $ref: '#/components/schemas/Subscription' },
+                        needsConfirmation: { type: 'boolean' },
+                        transaction: { $ref: '#/components/schemas/OnrampTransaction' },
+                        error: { type: 'string' }
+                    }
+                },
+                BountyAllocation: {
+                    type: 'object',
+                    properties: {
+                        message: { type: 'string' },
+                        transactionHash: { type: 'string' },
+                        blockNumber: { type: 'integer' }
+                    }
+                },
+                RepositoryFundingStatus: {
+                    type: 'object',
+                    properties: {
+                        dailyLimit: { type: 'number' },
+                        currentTotal: { type: 'number' },
+                        remainingLimit: { type: 'number' },
+                        windowStartTime: { type: 'string', format: 'date-time' },
+                        windowEndTime: { type: 'string', format: 'date-time' }
+                    }
+                },
+                IssueBountyDetails: {
+                    type: 'object',
+                    properties: {
+                        issueId: { type: 'integer' },
+                        bountyAmount: { type: 'string' },
+                        currencyType: { type: 'string' },
+                        isDistributed: { type: 'boolean' },
+                        contributor: { type: 'string' }
+                    }
                 }
             },
             securitySchemes: {

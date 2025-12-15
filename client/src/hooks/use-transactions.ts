@@ -13,6 +13,8 @@ export interface Transaction {
   confirmations: number;
   isIncoming: boolean;
   status: 'confirmed' | 'pending';
+  tokenSymbol?: string;  // 'XDC', 'ROXN', 'USDC'
+  tokenAmount?: string;  // Formatted token amount
 }
 
 export function useTransactions(limit: number = 10) {
