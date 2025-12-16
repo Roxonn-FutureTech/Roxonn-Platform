@@ -11,7 +11,7 @@ import { storage } from './storage'; // Import storage for new prompt functions
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Helper function to safely extract a note string from messages
-function getNoteFromMessages(messages: Array<{role: string, content: string | any[]}>): string {
+function getNoteFromMessages(messages: Array<{ role: string, content: string | any[] }>): string {
   const lastUserMessage = messages.filter(m => m.role === 'user').pop();
   if (lastUserMessage) {
     if (typeof lastUserMessage.content === 'string') {
@@ -34,9 +34,9 @@ async function logInternalTokenUsage(userId: number, usageData: {
 }
 
 export interface AzureOpenAIRequestBody {
-  messages: Array<{role: string, content: string | Array<{type: string, text?: string, image_url?: {url: string, detail?: string}}>}>;
-  modelId?: string; 
-  model?: string; 
+  messages: Array<{ role: string, content: string | Array<{ type: string, text?: string, image_url?: { url: string, detail?: string } }> }>;
+  modelId?: string;
+  model?: string;
   stream?: boolean;
   max_tokens?: number;
   temperature?: number;
@@ -106,10 +106,10 @@ export async function handleVSCodeAIChatCompletions(req: Request, res: Response)
       selectedApiVersion = config.azureOpenaiApiVersionGpt41;
       actualModelNameForLog = azureRequestBody.model || selectedDeploymentName || 'gpt-4.1';
       log(`Using gpt-4.1 configuration for user ${user.id}`, 'vscode-ai');
-    } else if (requestedModelId === 'ministral-3b') { 
+    } else if (requestedModelId === 'ministral-3b') {
       selectedEndpoint = config.azureOpenaiEndpointMinistral3B;
       selectedApiKey = config.azureOpenaiKeyMinistral3B;
-      selectedDeploymentName = config.azureOpenaiDeploymentNameMinistral3B; 
+      selectedDeploymentName = config.azureOpenaiDeploymentNameMinistral3B;
       selectedApiVersion = config.azureOpenaiApiVersionMinistral3B;
       actualModelNameForLog = azureRequestBody.model || selectedDeploymentName || 'Ministral-3B';
       log(`Using Ministral-3B configuration for user ${user.id}`, 'vscode-ai');
@@ -144,7 +144,7 @@ export async function handleVSCodeAIChatCompletions(req: Request, res: Response)
       log(`Selected AI model configuration for '${requestedModelId}' is missing or incomplete on the backend.`, 'vscode-ai-ERROR');
       return res.status(500).json({ error: `AI service backend not configured properly for model '${requestedModelId}'.` });
     }
-    
+
     log(`Proxying AI request for user ${user.id} to ${selectedDeploymentName}`, 'vscode-ai');
     const isStreamingRequest = azureRequestBody.stream === true;
     log(`Request is${isStreamingRequest ? '' : ' not'} using streaming mode`, 'vscode-ai');
@@ -198,22 +198,22 @@ export async function handleVSCodeAIChatCompletions(req: Request, res: Response)
               waitTime = retryAfterSeconds * 1000; // Convert seconds to ms
             }
           }
-          
+
           lastError = `Status 429: Rate limited. Retry-After: ${retryAfterHeader || 'N/A'}.`;
           log(`Azure OpenAI request to ${selectedDeploymentName} was rate limited (attempt ${attempt + 1}). Waiting ${waitTime}ms. ${lastError}`, 'vscode-ai-WARN');
           await delay(waitTime);
           currentDelay = Math.min(currentDelay * 2, 30000); // Exponential backoff, cap at 30s
-          continue; 
+          continue;
         }
-        
-        aiServiceResponse = response; 
-        break; 
+
+        aiServiceResponse = response;
+        break;
       } catch (fetchError: any) {
         lastError = fetchError.message || fetchError;
         log(`Fetch error during Azure OpenAI request (attempt ${attempt + 1}): ${lastError}`, 'vscode-ai-ERROR');
         if (attempt < maxRetries) {
           await delay(currentDelay);
-          currentDelay = Math.min(currentDelay * 2, 30000); 
+          currentDelay = Math.min(currentDelay * 2, 30000);
         }
       }
     }
@@ -221,23 +221,23 @@ export async function handleVSCodeAIChatCompletions(req: Request, res: Response)
     if (!aiServiceResponse) {
       log(`Azure OpenAI request to ${selectedDeploymentName} failed after ${maxRetries + 1} attempts. Last error: ${JSON.stringify(lastError)}`, 'vscode-ai-ERROR');
       return res.status(503).json({ // Service Unavailable after retries
-        error: 'AI service request failed after multiple retries', 
+        error: 'AI service request failed after multiple retries',
         message: 'The AI service is currently experiencing high load or an issue. Please try again later.',
         details: lastError
       });
     }
-    
+
     if (!aiServiceResponse.ok) {
       // This handles non-429 errors that are not retried, or the final error after retries if it's still not .ok
       const errorBody = await aiServiceResponse.text();
       log(`Azure OpenAI request to ${selectedDeploymentName} failed with status ${aiServiceResponse.status}: ${errorBody}`, 'vscode-ai-ERROR');
-      return res.status(aiServiceResponse.status).json({ 
-        error: 'AI service request failed', 
+      return res.status(aiServiceResponse.status).json({
+        error: 'AI service request failed',
         message: `Underlying AI service error: ${aiServiceResponse.statusText || `Status Code: ${aiServiceResponse.status}`}`,
-        details: errorBody 
+        details: errorBody
       });
     }
-    
+
     if (isStreamingRequest) {
       log(`Handling streaming response for user ${user.id}`, 'vscode-ai');
       try {
@@ -274,8 +274,8 @@ export async function handleVSCodeAIChatCompletions(req: Request, res: Response)
         return;
       }
     }
-    
-    const responseData = await aiServiceResponse.json();
+
+    const responseData: any = await aiServiceResponse.json();
     if (responseData.usage && responseData.usage.prompt_tokens !== undefined && responseData.usage.completion_tokens !== undefined) {
       await logInternalTokenUsage(user.id, {
         service: 'vscode-ai-chat-nonstream', model: actualModelNameForLog,
@@ -299,14 +299,14 @@ export async function handleVSCodeAIChatCompletions(req: Request, res: Response)
     } else {
       log(`No token usage data from non-streaming AI response for user ${user.id}. Prompt not deducted.`, 'vscode-ai');
     }
-    
+
     log(`Successfully processed non-streaming AI chat request for user ${user.id}`, 'vscode-ai');
     return res.json(responseData);
   } catch (error: any) {
     log(`VSCode AI chat request processing error for user ${req.user?.id || 'unknown'}: ${error.message || error}`, 'vscode-ai-ERROR');
     console.error('VSCode AI chat request failed:', error);
     if (!res.headersSent) {
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'AI service temporarily unavailable',
         message: error.message || 'Unknown error'
       });
