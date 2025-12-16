@@ -1730,10 +1730,37 @@ export class BlockchainService {
 
             const feeData = await this.provider.getFeeData();
             const gasPrice = feeData.gasPrice ? feeData.gasPrice * BigInt(120) / BigInt(100) : undefined;
+            const normalizedAddress = userAddress.replace('xdc', '0x');
+
+            // 1. Check Relayer Balance
+            const relayerBalance = await this.provider.getBalance(this.relayerWallet.address);
+            const estimatedCost = (gasPrice || BigInt(1000000000)) * BigInt(200000); // estimated gas (200k)
+            if (relayerBalance < estimatedCost) {
+                log(`Insufficient relayer balance for certificate minting. Balance: ${relayerBalance}, Required: ${estimatedCost}`, "blockchain-error");
+                throw new Error(`Insufficient relayer balance for certificate minting`);
+            }
+
+            // 2. Estimate Gas
+            let gasLimit;
+            try {
+                const estimatedGas = await this.contributionCertificateContract.mintCertificate.estimateGas(
+                    normalizedAddress,
+                    metadataUri
+                );
+                // Add 30% buffer
+                gasLimit = estimatedGas * BigInt(130) / BigInt(100);
+            } catch (e) {
+                log(`Gas estimation failed for certificate minting: ${e}`, "blockchain-warn");
+                gasLimit = BigInt(300000); // Fallback gas limit
+            }
+
             const tx = await this.contributionCertificateContract.mintCertificate(
-                userAddress.replace('xdc', '0x'),
+                normalizedAddress,
                 metadataUri,
-                { gasPrice }
+                {
+                    gasPrice,
+                    gasLimit
+                }
             );
             log(`Certificate minting transaction sent: ${tx.hash}`, "blockchain");
             const receipt = await tx.wait();

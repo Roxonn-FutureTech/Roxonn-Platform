@@ -105,6 +105,7 @@ Implementation details in `/docs/FEATURES/PRIVATE_REPOS.md`
   ROXNToken.sol               - ROXN ERC20/XRC20 token
   CustomForwarder.sol         - Meta-transaction forwarder
   ProofOfCompute.sol          - Compute node management
+  ContributionCertificate.sol - ERC721 Soulbound contribution certificates
   (Legacy: RepoRewards.sol, RoxnRewards.sol, USDCRepoRewards.sol - NOT IN USE)
 
 /shared          - Shared types and schema
@@ -135,6 +136,7 @@ Routes are organized in `server/routes/` with each file handling a specific doma
   promotionalBounties.ts- /api/promotional/* - Promotional bounties
   multiCurrencyWallet.ts- /api/wallet/* - Multi-currency features
   leaderboardRoutes.ts  - /api/leaderboard/* - Leaderboard endpoints
+  certificateRoutes.ts  - /api/certificates/* - Certificate issuance
   aiScopingAgent.ts     - /api/ai-scoping/* - AI scoping agent
 ```
 
@@ -163,6 +165,10 @@ The system uses UUPS proxy pattern for upgradeability. Current active contracts:
 5. **USDC Token** (External)
    - Standard USDC deployment on XDC
    - Env var: `USDC_XDC_ADDRESS`
+
+6. **ContributionCertificate**
+   - ERC721 Soulbound tokens for contribution recognition
+   - Env var: `CONTRIBUTION_CERTIFICATE_ADDRESS`
 
 ### Database Schema (PostgreSQL)
 
@@ -230,6 +236,9 @@ Each model has separate endpoint, key, and deployment name configuration.
 - `POST /api/ai-scoping-agent/*` - AI project scoping
 - `POST /api/exo-node/heartbeat` - Compute node heartbeat
 
+**Certificates**
+- `POST /api/certificates/issue` - Issue contribution certificate (Admin only)
+
 **Subscriptions**
 - `POST /api/subscription/merchant/init` - Initialize subscription
 - `GET /api/subscription/status` - Check subscription status
@@ -254,6 +263,7 @@ XDC_RPC_URL                # XDC network RPC
 DUAL_CURRENCY_REWARDS_CONTRACT_ADDRESS  # Main rewards contract
 ROXN_TOKEN_ADDRESS         # ROXN token contract
 FORWARDER_CONTRACT_ADDRESS # Meta-tx forwarder
+CONTRIBUTION_CERTIFICATE_ADDRESS # Certificate contract address
 USDC_XDC_ADDRESS          # USDC token on XDC
 PRIVATE_KEY               # Relayer wallet private key
 
