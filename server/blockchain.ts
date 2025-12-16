@@ -37,15 +37,18 @@ const CustomForwarderABI = CustomForwarderContract.abi;
 const ROXNTokenABI = ROXNTokenContract.abi;
 const UnifiedRewardsABI = DualCurrencyRepoRewardsContractArtifact.abi;
 const ProofOfComputeABI = ProofOfComputeContractArtifact.abi;
+// fs is already imported as named import 'readFileSync', but we need 'existsSync'
 import fs from 'fs';
 let ContributionCertificateABI: any = [];
-try {
-    const artifactPath = join(__dirname, '../contracts/artifacts/contracts/ContributionCertificate.sol/ContributionCertificate.json');
-    if (fs.existsSync(artifactPath)) {
+const artifactPath = join(__dirname, '../contracts/artifacts/contracts/ContributionCertificate.sol/ContributionCertificate.json');
+if (fs.existsSync(artifactPath)) {
+    try {
         const ContributionCertificateArtifact = JSON.parse(readFileSync(artifactPath, 'utf-8'));
         ContributionCertificateABI = ContributionCertificateArtifact.abi;
+    } catch (e) {
+        log(`Error loading ContributionCertificate artifact: ${e}`, "blockchain-error");
     }
-} catch (e) {
+} else {
     log("ContributionCertificate artifact not found (likely not compiled or deployed yet)", "blockchain-warn");
 }
 
@@ -1723,12 +1726,19 @@ export class BlockchainService {
         }
         try {
             log(`Issuing certificate to ${userAddress} with URI: ${metadataUri}`, "blockchain");
+
+            const feeData = await this.provider.getFeeData();
+            const gasPrice = feeData.gasPrice ? feeData.gasPrice * BigInt(120) / BigInt(100) : undefined;
             const tx = await this.contributionCertificateContract.mintCertificate(
                 userAddress.replace('xdc', '0x'),
-                metadataUri
+                metadataUri,
+                { gasPrice }
             );
             log(`Certificate minting transaction sent: ${tx.hash}`, "blockchain");
             const receipt = await tx.wait();
+            if (!receipt) {
+                throw new Error('Certificate minting transaction failed to confirm');
+            }
             log(`Certificate minted in block ${receipt.blockNumber}`, "blockchain");
             return tx.hash;
         } catch (error: any) {

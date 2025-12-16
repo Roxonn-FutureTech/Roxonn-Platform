@@ -66,7 +66,7 @@ export const baseConfig = {
   forwarderContractAddress: process.env.FORWARDER_CONTRACT_ADDRESS || '0x3bF77b9192E1bc9d780fcA8eC51C2a0edc2B8aD5',
   roxnTokenAddress: process.env.ROXN_TOKEN_ADDRESS || '0xD0b99c496e7Bd6EFE62Fc4cBfB2A796B62e59c2c',
   roxnTokenImplAddress: process.env.ROXN_TOKEN_IMPL_ADDRESS || '',
-  contributionCertificateAddress: process.env.CONTRIBUTOR_CERTIFICATE_ADDRESS || '',
+  contributionCertificateAddress: process.env.CONTRIBUTION_CERTIFICATE_ADDRESS || '',
 
   // New ROXN Rewards Contract (additions) - These are now obsolete due to unified contract
   // newRoxnRewardsContractAddress: process.env.NEW_ROXN_REWARDS_CONTRACT_ADDRESS || '0xYOUR_NEW_ROXN_REWARDS_PROXY_ADDRESS_HERE', 

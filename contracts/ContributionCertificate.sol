@@ -17,12 +17,13 @@ contract ContributionCertificate is ERC721, ERC721URIStorage, Ownable {
     }
 
     // Soulbound: Overlay transfer functions to prevent transfers
-    function transferFrom(address from, address to, uint256 tokenId) public override(ERC721, IERC721) {
-        revert("ContributionCertificate: Soulbound token - transfer not allowed");
-    }
-
-    function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) public override(ERC721, IERC721) {
-        revert("ContributionCertificate: Soulbound token - transfer not allowed");
+    // Soulbound: Use _update hook to prevent all transfers (including those via approval)
+    function _update(address to, uint256 tokenId, address auth) internal override(ERC721) returns (address) {
+        address from = _ownerOf(tokenId);
+        if (from != address(0) && to != address(0)) {
+            revert("ContributionCertificate: Soulbound token - transfer not allowed");
+        }
+        return super._update(to, tokenId, auth);
     }
 
     // The following functions are overrides required by Solidity.
