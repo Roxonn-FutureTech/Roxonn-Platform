@@ -22,18 +22,18 @@ export const baseConfig = {
   cookieDomain: process.env.COOKIE_DOMAIN || 'localhost',
   // Support / no-reply email (used for OTP)
   supportEmail: process.env.SUPPORT_EMAIL || 'connect@roxonn.com',
-  
+
   // Server settings
   port: parseInt(process.env.PORT || '5000'),
   nodeEnv: process.env.NODE_ENV || 'development',
-  
+
   // GitHub OAuth (non-sensitive)
   githubClientId: process.env.GITHUB_CLIENT_ID,
   githubCallbackUrl: process.env.GITHUB_CALLBACK_URL,
   githubOrg: process.env.GITHUB_ORG || 'Roxonn-FutureTech',
   githubAppId: process.env.GITHUB_APP_ID,
   githubAppName: process.env.GITHUB_APP_NAME,
-  
+
   // Blockchain (non-sensitive)
   xdcNodeUrl: process.env.XDC_RPC_URL || 'https://rpc.xinfin.network',
 
@@ -41,32 +41,33 @@ export const baseConfig = {
   ethereumRpcUrl: process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com',
   polygonRpcUrl: process.env.POLYGON_RPC_URL || 'https://polygon-rpc.com',
   bscRpcUrl: process.env.BSC_RPC_URL || 'https://bsc-dataseed.binance.org',
-  
+
   // USDT Contract Addresses
   usdtEthereumAddress: process.env.USDT_ETHEREUM_ADDRESS || '0xdAC17F958D2ee523a2206206994597C13D831ec7',
   usdtPolygonAddress: process.env.USDT_POLYGON_ADDRESS || '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
   usdtBscAddress: process.env.USDT_BSC_ADDRESS || '0x55d398326f99059fF775485246999027B3197955',
-  
+
   // USDC Contract Address on XDC (USDC rewards now handled by main DualCurrencyRepoRewards contract)
   usdcXdcAddress: process.env.USDC_XDC_ADDRESS || '0xfA2958CB79b0491CC627c1557F441eF849Ca8eb1',
   usdcTokenAddress: process.env.USDC_XDC_ADDRESS || '0xfA2958CB79b0491CC627c1557F441eF849Ca8eb1',
-  
+
   // Legacy RepoRewards contract (XDC only) - DEPRECATED
   // repoRewardsContractAddress: process.env.REPO_REWARDS_CONTRACT_ADDRESS || '',
   // repoRewardsImplAddress: process.env.REPO_REWARDS_IMPL_ADDRESS || '',
-  
+
   // DualCurrencyRepoRewards contract (XDC + ROXN + USDC) - Main unified contract
   dualCurrencyRewardsContractAddress: process.env.DUAL_CURRENCY_REWARDS_CONTRACT_ADDRESS || '',
   dualCurrencyRewardsImplAddress: process.env.DUAL_CURRENCY_REWARDS_IMPL_ADDRESS || '',
-  
+
   // Use dual currency contract as the main rewards contract
   repoRewardsContractAddress: process.env.DUAL_CURRENCY_REWARDS_CONTRACT_ADDRESS || process.env.REPO_REWARDS_CONTRACT_ADDRESS || '',
   repoRewardsImplAddress: process.env.DUAL_CURRENCY_REWARDS_IMPL_ADDRESS || process.env.REPO_REWARDS_IMPL_ADDRESS || '',
-  
+
   forwarderContractAddress: process.env.FORWARDER_CONTRACT_ADDRESS || '0x3bF77b9192E1bc9d780fcA8eC51C2a0edc2B8aD5',
   roxnTokenAddress: process.env.ROXN_TOKEN_ADDRESS || '0xD0b99c496e7Bd6EFE62Fc4cBfB2A796B62e59c2c',
   roxnTokenImplAddress: process.env.ROXN_TOKEN_IMPL_ADDRESS || '',
-  
+  contributionCertificateAddress: process.env.CONTRIBUTOR_CERTIFICATE_ADDRESS || '',
+
   // New ROXN Rewards Contract (additions) - These are now obsolete due to unified contract
   // newRoxnRewardsContractAddress: process.env.NEW_ROXN_REWARDS_CONTRACT_ADDRESS || '0xYOUR_NEW_ROXN_REWARDS_PROXY_ADDRESS_HERE', 
   // newRoxnRewardsImplAddress: process.env.NEW_ROXN_REWARDS_IMPL_ADDRESS || '0xYOUR_NEW_ROXN_REWARDS_IMPL_ADDRESS_HERE', 
@@ -74,17 +75,17 @@ export const baseConfig = {
   feeCollectorAddress: process.env.FEE_COLLECTOR_ADDRESS || '',
   platformFeeRate: parseInt(process.env.PLATFORM_FEE_RATE || '50'), // Default 0.5%
   contributorFeeRate: parseInt(process.env.CONTRIBUTOR_FEE_RATE || '50'), // Default 0.5%
-  
+
   // Database (non-sensitive parts)
   dbSchema: process.env.DB_SCHEMA || 'staging',
-  
+
   // AWS
   walletKmsKeyId: process.env.WALLET_KMS_KEY_ID,
   awsRegion: process.env.AWS_REGION,
-  
+
   // Zoho CRM Integration
   zohoClientId: process.env.ZOHO_CLIENT_ID,
-  
+
   // Onramp.money Integration
   onrampMoneyAppId: process.env.ONRAMP_MONEY_APP_ID || '',
   onrampMoneyBaseUrl: process.env.ONRAMP_MONEY_BASE_URL || 'https://onramp.money/main/buy/',
@@ -96,10 +97,10 @@ export const baseConfig = {
   platformTreasuryAddressXdc: process.env.PLATFORM_TREASURY_ADDRESS_XDC || process.env.FEE_COLLECTOR_ADDRESS || '',
   platformTreasuryAddressPolygon: process.env.PLATFORM_TREASURY_ADDRESS_POLYGON || '', // Same treasury for now
   polygonUsdcAddress: process.env.POLYGON_USDC_ADDRESS || '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', // USDC on Polygon PoS
-  
+
   // Azure Storage (for course videos)
   azureStorageAccount: process.env.AZURE_STORAGE_ACCOUNT || 'blobvideohostcoursepage',
-  
+
   // Flag to use SSM parameters or fallback to environment variables
   useParameterStore: process.env.USE_PARAMETER_STORE === 'true',
 
@@ -144,10 +145,10 @@ export const baseConfig = {
 
   // New User Trial Prompts
   newUserTrialPrompts: parseInt(process.env.NEW_USER_TRIAL_PROMPTS || '5'), // Default to 5 trial prompts
-  
+
   // JWT Expiration for VSCode
   jwtExpiresInVSCode: process.env.JWT_EXPIRES_IN_VSCODE || '30d',
-  
+
   // Partner API key for external integrations (like Rewards Bunny)
   partnerApiKey: process.env.PARTNER_API_KEY || 'partner_dev_key',
 
@@ -163,11 +164,11 @@ export const baseConfig = {
 // Full configuration with sensitive values that will be populated
 export let config = {
   ...baseConfig,
-  
+
   // Sensitive values (will be populated from Parameter Store or environment variables)
   githubClientSecret: process.env.GITHUB_CLIENT_SECRET,
   githubPat: process.env.GITHUB_PAT,
-  githubAppPrivateKey: process.env.GITHUB_APP_PRIVATE_KEY?.replace(/\\n/g, '\n'), 
+  githubAppPrivateKey: process.env.GITHUB_APP_PRIVATE_KEY?.replace(/\\n/g, '\n'),
   githubAppWebhookSecret: process.env.GITHUB_APP_WEBHOOK_SECRET,
   sessionSecret: process.env.SESSION_SECRET,
   relayerPrivateKey: process.env.PRIVATE_KEY || '',
@@ -200,7 +201,7 @@ export let config = {
 
   // Azure OpenAI Grok models (sensitive part - API Key)
   azureOpenaiKeyGrok: process.env.AZURE_OPENAI_KEY_GROK,
-  
+
   // Azure Storage (sensitive part)
   azureStorageKey: process.env.AZURE_STORAGE_KEY,
 } as const;
@@ -211,9 +212,9 @@ export async function initializeConfig() {
     console.log('Using environment variables for sensitive configuration');
     return;
   }
-  
+
   console.log('Loading sensitive configuration from Parameter Store');
-  
+
   try {
     // List of parameters to load from Parameter Store
     const parameterMap: Record<string, string> = {
@@ -256,7 +257,7 @@ export async function initializeConfig() {
       // 'blockchain/new-roxn-rewards-contract-address': 'newRoxnRewardsContractAddress',
       // 'blockchain/new-roxn-rewards-impl-address': 'newRoxnRewardsImplAddress',
     };
-    
+
     // Load parameters in parallel
     const parameterPromises = Object.entries(parameterMap).map(async ([paramName, configKey]) => {
       const value = await getParameter(paramName);
@@ -272,7 +273,7 @@ export async function initializeConfig() {
         console.log(`Parameter not found: ${paramName}, using environment variable`);
       }
     });
-    
+
     await Promise.all(parameterPromises);
     console.log('Configuration initialized from Parameter Store');
   } catch (error) {
@@ -287,7 +288,7 @@ export function validateConfig() {
     // Skip validation when using Parameter Store
     return;
   }
-  
+
   const requiredEnvVars = [
     'GITHUB_CLIENT_ID',
     'GITHUB_CLIENT_SECRET',
