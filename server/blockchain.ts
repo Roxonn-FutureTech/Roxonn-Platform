@@ -1,4 +1,4 @@
-import { ethers } from 'ethers';
+import { ethers, ContractTransactionResponse } from 'ethers';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync } from 'fs';
@@ -881,7 +881,8 @@ export class BlockchainService {
 
             log(`Calling getRepository on contract ${this.contract.target} for repoId ${repoId}`, "blockchain-debug");
 
-            const rawResult = await this.contract.getRepository(repoId);
+            // Cast to any[] to avoid strict tuple length checking
+            const rawResult = await this.contract.getRepository(repoId) as any[];
             if (!rawResult || !Array.isArray(rawResult) || (rawResult.length !== 5 && rawResult.length !== 6)) {
                 log(`Contract returned empty data for repoId ${repoId} - repository may not be initialized`, "blockchain-warn");
                 return {
@@ -950,8 +951,8 @@ export class BlockchainService {
                 roxnPoolRewards: ethers.formatEther(poolRewardsROXN),
                 usdcPoolRewards: ethers.formatUnits(poolRewardsUSDC, 6),
                 issues: formattedIssues,
-                poolManagers: poolManagers.map(addr => addr.toLowerCase()),
-                contributors: contributors.map(addr => addr.toLowerCase()),
+                poolManagers: poolManagers.map((addr: string) => addr.toLowerCase()),
+                contributors: contributors.map((addr: string) => addr.toLowerCase()),
             } as UnifiedPoolInfo;
         } catch (error: any) {
             log(`Failed to get repository details for repoId ${repoId}: ${error.message}`, "blockchain");
@@ -1527,7 +1528,7 @@ export class BlockchainService {
             const amountInSmallestUnit = ethers.parseUnits(usdcAmount, 6); // USDC has 6 decimals
             const usdcTokenWithSigner = this.usdcTokenContract.connect(userWallet) as TokenContract;
 
-            const approveTx = await usdcTokenWithSigner.approve(this.contract.target as string, amountInSmallestUnit);
+            const approveTx = await usdcTokenWithSigner.approve(this.contract.target as string, amountInSmallestUnit) as ContractTransactionResponse;
             await approveTx.wait();
             log(`USDC approval confirmed for ${usdcAmount} USDC`, "blockchain");
 
