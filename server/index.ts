@@ -466,6 +466,21 @@ async function startServer() {
     // Register API routes
     registerRoutes(app);
 
+    // Global error handler - must be AFTER all routes
+    app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+      log(`ERROR: ${err.message}`, 'error');
+      log(`Stack: ${err.stack}`, 'error');
+      log(`Request: ${req.method} ${req.path}`, 'error');
+      log(`Body: ${JSON.stringify(req.body)}`, 'error');
+
+      // Send error response
+      const statusCode = err.statusCode || err.status || 500;
+      res.status(statusCode).json({
+        error: err.message || 'Internal server error',
+        ...(config.nodeEnv !== 'production' && { stack: err.stack })
+      });
+    });
+
     // Swagger UI - custom endpoints to avoid esbuild bundling issues with swagger-ui-express
     // Serve swagger spec as JSON
     app.get('/api/docs/swagger.json', (req, res) => {

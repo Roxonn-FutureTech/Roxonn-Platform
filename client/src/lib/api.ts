@@ -19,11 +19,18 @@ const api = {
         'Content-Type': 'application/json'
       }
     });
-    
+
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      const errorMessage = errorData.error || errorData.message || `HTTP ${response.status}`;
+      console.error('API GET Error:', {
+        endpoint,
+        status: response.status,
+        errorData
+      });
+      throw new Error(errorMessage);
     }
-    
+
     return response.json();
   },
   
@@ -33,7 +40,7 @@ const api = {
   async post<T = any>(endpoint: string, data?: any): Promise<T> {
     // Add CSRF token to request data
     const csrfBody = data ? await csrfService.addTokenToBody(data) : { _csrf: await csrfService.getToken() };
-    
+
     const response = await fetch(`${STAGING_API_URL}${endpoint}`, {
       method: 'POST',
       credentials: 'include',
@@ -44,11 +51,19 @@ const api = {
       },
       body: JSON.stringify(csrfBody)
     });
-    
+
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      const errorMessage = errorData.error || errorData.message || `HTTP ${response.status}`;
+      console.error('API POST Error:', {
+        endpoint,
+        status: response.status,
+        errorData,
+        requestBody: csrfBody
+      });
+      throw new Error(errorMessage);
     }
-    
+
     return response.json();
   },
   
@@ -58,7 +73,7 @@ const api = {
   async put<T = any>(endpoint: string, data?: any): Promise<T> {
     // Add CSRF token to request data
     const csrfBody = data ? await csrfService.addTokenToBody(data) : { _csrf: await csrfService.getToken() };
-    
+
     const response = await fetch(`${STAGING_API_URL}${endpoint}`, {
       method: 'PUT',
       credentials: 'include',
@@ -69,11 +84,19 @@ const api = {
       },
       body: JSON.stringify(csrfBody)
     });
-    
+
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      const errorMessage = errorData.error || errorData.message || `HTTP ${response.status}`;
+      console.error('API PUT Error:', {
+        endpoint,
+        status: response.status,
+        errorData,
+        requestBody: csrfBody
+      });
+      throw new Error(errorMessage);
     }
-    
+
     return response.json();
   },
   
@@ -83,7 +106,7 @@ const api = {
   async patch<T = any>(endpoint: string, data?: any): Promise<T> {
     // Add CSRF token to request data
     const csrfBody = data ? await csrfService.addTokenToBody(data) : { _csrf: await csrfService.getToken() };
-    
+
     const response = await fetch(`${STAGING_API_URL}${endpoint}`, {
       method: 'PATCH',
       credentials: 'include',
@@ -94,11 +117,19 @@ const api = {
       },
       body: JSON.stringify(csrfBody)
     });
-    
+
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      const errorMessage = errorData.error || errorData.message || `HTTP ${response.status}`;
+      console.error('API PATCH Error:', {
+        endpoint,
+        status: response.status,
+        errorData,
+        requestBody: csrfBody
+      });
+      throw new Error(errorMessage);
     }
-    
+
     return response.json();
   },
   
@@ -115,11 +146,18 @@ const api = {
         'X-CSRF-Token': await csrfService.getToken() // Include in headers for DELETE requests
       }
     });
-    
+
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      const errorMessage = errorData.error || errorData.message || `HTTP ${response.status}`;
+      console.error('API DELETE Error:', {
+        endpoint,
+        status: response.status,
+        errorData
+      });
+      throw new Error(errorMessage);
     }
-    
+
     return response.json();
   }
 };
