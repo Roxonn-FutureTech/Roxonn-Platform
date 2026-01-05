@@ -58,6 +58,8 @@ export interface IStorage {
   getUserPromptBalance(userId: number): Promise<number>;
   updateRepositoryVisibility(githubRepoId: string, isPrivate: boolean): Promise<boolean>;
   updateRepositoryActiveStatus(githubRepoId: string, isActive: boolean): Promise<boolean>;
+  getUserByGithubEmail(email: string): Promise<any | null>;
+  getUserByGithubUsername(username: string): Promise<any | null>;
 }
 
 // Define PromptTransactionType enum locally if not imported from a shared types file
@@ -1609,6 +1611,57 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       log(`Error fetching issue comment: ${error instanceof Error ? error.message : String(error)}`, 'storage-ERROR');
       return null;
+    }
+  }
+
+  /**
+   * Get a user by their email address
+   * Used for checking email opt-out preferences before sending notifications
+   */
+  async getUserByGithubEmail(email: string): Promise<any | null> {
+    try {
+      log(`Getting user by email: ${email}`, 'storage');
+      const user = await db.query.users.findFirst({
+        where: eq(users.email, email),
+      });
+
+      if (!user) {
+        log(`No user found with email: ${email}`, 'storage');
+        return null;
+      }
+
+      log(`User found with email: ${email}`, 'storage');
+      return user;
+    } catch (error) {
+      log(`Error getting user by email: ${error instanceof Error ? error.message : String(error)}`, 'storage');
+      throw error;
+    }
+  }
+
+  /**
+   * Delete user account and all associated data
+   * This is a hard delete that removes the user and all related records
+   * Cascade deletes handle most related tables automatically
+   */
+  async deleteUser(userId: number): Promise<boolean> {
+    try {
+      log(`Deleting user account: ${userId}`, 'storage');
+
+      // Delete the user record (cascade will handle most related records)
+      const deletedUsers = await db.delete(users)
+        .where(eq(users.id, userId))
+        .returning({ id: users.id });
+
+      if (deletedUsers.length === 0) {
+        log(`No user found to delete with ID: ${userId}`, 'storage');
+        return false;
+      }
+
+      log(`User account deleted successfully: ${userId}`, 'storage');
+      return true;
+    } catch (error) {
+      log(`Error deleting user: ${error instanceof Error ? error.message : String(error)}`, 'storage-ERROR');
+      throw error;
     }
   }
 

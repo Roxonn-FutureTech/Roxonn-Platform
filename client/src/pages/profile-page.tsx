@@ -3,12 +3,14 @@ import { useAuth } from "@/hooks/use-auth";
 import { useWallet } from "@/hooks/use-wallet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Mail, Globe, MapPin, Wallet, AlertCircle, ChevronRight, DollarSign, Zap, Coins, ExternalLink, Shield } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Loader2, Mail, Globe, MapPin, Wallet, AlertCircle, ChevronRight, DollarSign, Zap, Coins, ExternalLink, Shield, CheckCircle } from "lucide-react";
 import { Redirect, Link } from "wouter";
 import { ethers } from "ethers";
 import { MyRepositories } from "@/components/my-repositories";
 import { ReferralWidget } from "@/components/referral-widget";
 import { useQuery } from '@tanstack/react-query';
+import React from 'react';
 
 // GitHub Icon component
 function GitHubIcon({ className }: { className?: string }) {
@@ -293,6 +295,45 @@ export default function ProfilePage() {
             </div>
           )}
 
+          {/* Account Settings Section */}
+          <motion.div variants={itemVariants} className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold">
+                <span className="gradient-text-purple">Account Settings</span>
+              </h2>
+              <p className="text-muted-foreground">Manage your email preferences and account</p>
+            </div>
+
+            {/* Email Notifications Card */}
+            <motion.div variants={itemVariants} className="card-noir p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-semibold">Email Notifications</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Includes bounty alerts and platform updates
+                  </p>
+                </div>
+                <EmailNotificationsToggle />
+              </div>
+            </motion.div>
+
+            {/* Delete Account Card */}
+            <motion.div variants={itemVariants} className="card-noir p-6 border-red-500/20">
+              <div className="flex items-start gap-4">
+                <div className="p-2 rounded-lg bg-red-500/10 text-red-500">
+                  <AlertCircle className="h-5 w-5" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-red-500">Delete Account</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Permanently delete your account and all associated data. This action cannot be undone.
+                  </p>
+                  <DeleteAccountButton />
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+
           {/* Pool Manager Section */}
           {user?.role === 'poolmanager' && (
             <motion.div variants={itemVariants} className="space-y-6">
@@ -330,3 +371,208 @@ export default function ProfilePage() {
     </div>
   );
 }
+
+// Email Notifications Toggle Component
+function EmailNotificationsToggle() {
+  const { user } = useAuth();
+  const [optOut, setOptOut] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const fetchPreferences = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch('/api/user/email-preferences', {
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch email preferences');
+        }
+
+        const data = await response.json();
+        setOptOut(data.optOut);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load preferences');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (user) {
+      fetchPreferences();
+    }
+  }, [user]);
+
+  const updatePreferences = async (newOptOut: boolean) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch('/api/user/email-preferences', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ optOut: newOptOut })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update preferences');
+      }
+
+      setOptOut(newOptOut);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update preferences');
+      // Revert the toggle if it failed
+      setOptOut(!newOptOut);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3">
+      {loading ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <button
+          onClick={() => updatePreferences(!optOut)}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+            optOut ? 'bg-gray-300' : 'bg-primary'
+          }`}
+          disabled={loading}
+          aria-label="Toggle email notifications"
+        >
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+              optOut ? 'translate-x-6' : 'translate-x-1'
+            }`}
+          />
+        </button>
+      )}
+      <span className="text-sm font-medium">
+        {optOut ? 'OFF' : 'ON'}
+      </span>
+    </div>
+  );
+}
+
+// Delete Account Button Component
+function DeleteAccountButton() {
+  const { user } = useAuth();
+  const [showConfirm, setShowConfirm] = React.useState(false);
+  const [confirmUsername, setConfirmUsername] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [success, setSuccess] = React.useState(false);
+
+  const handleDelete = async () => {
+    if (confirmUsername.toLowerCase() !== user?.username?.toLowerCase()) {
+      setError('Username does not match');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch('/api/user/delete-account', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ confirmUsername })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete account');
+      }
+
+      setSuccess(true);
+      // After successful deletion, user will be logged out automatically
+      setTimeout(() => {
+        window.location.href = '/auth';
+      }, 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete account');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (success) {
+    return (
+      <div className="text-green-500">
+        <CheckCircle className="h-5 w-5 inline mr-2" />
+        Account deleted successfully. Redirecting...
+      </div>
+    );
+  }
+
+  if (showConfirm) {
+    return (
+      <div className="space-y-4">
+        <div className="text-sm text-muted-foreground">
+          Please type your username <span className="font-mono font-bold">{user?.username}</span> to confirm deletion:
+        </div>
+        <div className="space-y-2">
+          <Input
+            type="text"
+            value={confirmUsername}
+            onChange={(e) => setConfirmUsername(e.target.value)}
+            placeholder={user?.username}
+            className="max-w-xs"
+          />
+          {error && <div className="text-red-500 text-sm">{error}</div>}
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={loading || confirmUsername.toLowerCase() !== user?.username?.toLowerCase()}
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                Deleting...
+              </>
+            ) : (
+              'Confirm Delete'
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setShowConfirm(false);
+              setConfirmUsername('');
+              setError(null);
+            }}
+            disabled={loading}
+          >
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <Button
+        variant="destructive"
+        onClick={() => setShowConfirm(true)}
+        className="w-fit"
+      >
+        Delete Account
+      </Button>
+      {error && <div className="text-red-500 text-sm mt-2">{error}</div>}
+    </>
+  );
+}
+

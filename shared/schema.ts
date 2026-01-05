@@ -37,6 +37,9 @@ export const users = pgTable("users", {
   totalRoxnEarned: decimal("total_roxn_earned", { precision: 18, scale: 8 }).default("0"),
   totalReferrals: integer("total_referrals").default(0),
 
+  // Email opt-out preference
+  emailOptOut: boolean("email_opt_out").default(false),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
