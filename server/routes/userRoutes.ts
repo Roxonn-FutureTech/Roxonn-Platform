@@ -1,31 +1,27 @@
 import { Router } from 'express';
-import { requireAuth } from '../auth';
+import { requireAuth, csrfProtection } from '../auth';
 import { storage } from '../storage';
 import { log } from '../utils';
 import rateLimit from 'express-rate-limit';
 import { eq } from 'drizzle-orm';
-import { users, type User } from '../../shared/schema';
+import { users } from '../../shared/schema';
 import { db } from '../db';
 
 const router = Router();
 
-// Rate limiter for account deletion (1 request per hour per user)
+// Rate limiter for account deletion (1 request per hour in production, 10 per hour in development)
 const deleteAccountLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 1, // Limit each user to 1 request per hour
+  max: process.env.NODE_ENV === 'production' ? 1 : 10, // Limit to 1 request per hour in prod, 10 in dev
   standardHeaders: true,
   legacyHeaders: false,
   message: {
     error: 'Too many account deletion requests, please try again after an hour'
-  },
-  skip: (req) => {
-    // Skip rate limiting in development
-    return process.env.NODE_ENV === 'development';
   }
 });
 
 // POST /api/user/delete-account - Delete user account
-router.post('/delete-account', deleteAccountLimiter, requireAuth, async (req, res) => {
+router.post('/delete-account', deleteAccountLimiter, requireAuth, csrfProtection, async (req, res) => {
   try {
     const { confirmUsername } = req.body;
     const userId = req.user?.id;
@@ -50,28 +46,39 @@ router.post('/delete-account', deleteAccountLimiter, requireAuth, async (req, re
     }
 
     // Delete the user account (this will cascade delete related data)
-    const success = await storage.deleteUser(userId);
+    // Will throw an error if user has wallet assets (prevents accidental fund loss)
+    try {
+      const success = await storage.deleteUser(userId);
 
-    if (!success) {
-      return res.status(404).json({ error: 'User not found' });
+      if (!success) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Clear the user's session first
+      req.logout((err) => {
+        if (err) {
+          log(`Error logging out user after account deletion: ${err}`, 'session');
+          // Continue with session destruction even if logout fails
+        }
+
+        // Destroy the session and send response only after session is destroyed
+        req.session.destroy((err) => {
+          if (err) {
+            log(`Error destroying session after account deletion: ${err}`, 'session');
+            // Still send success response even if session destruction fails
+          }
+
+          log(`User account deleted successfully: ${userId}`, 'user-deletion');
+          res.json({ success: true, message: 'Account deleted successfully' });
+        });
+      });
+    } catch (error) {
+      // Handle cases where user has wallet assets
+      log(`Error deleting user account: ${error instanceof Error ? error.message : String(error)}`, 'user-deletion');
+      return res.status(400).json({
+        error: error instanceof Error ? error.message : 'Error deleting account'
+      });
     }
-
-    // Clear the user's session
-    req.logout((err) => {
-      if (err) {
-        log(`Error logging out user after account deletion: ${err}`, 'session');
-      }
-    });
-
-    // Destroy the session
-    req.session.destroy((err) => {
-      if (err) {
-        log(`Error destroying session after account deletion: ${err}`, 'session');
-      }
-    });
-
-    log(`User account deleted successfully: ${userId}`, 'user-deletion');
-    res.json({ success: true, message: 'Account deleted successfully' });
   } catch (error) {
     log(`Error deleting user account: ${error instanceof Error ? error.message : String(error)}`, 'user-deletion');
     res.status(500).json({ error: 'Internal server error' });

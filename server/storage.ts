@@ -10,6 +10,7 @@ import { getWalletMnemonic, getWalletPrivateKey } from './tatum';
 import { storeWalletSecret } from './aws';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from './config';
+import { User } from '../shared/schema';
 import { S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { KMSClient, EncryptCommand, DecryptCommand } from '@aws-sdk/client-kms';
@@ -58,8 +59,8 @@ export interface IStorage {
   getUserPromptBalance(userId: number): Promise<number>;
   updateRepositoryVisibility(githubRepoId: string, isPrivate: boolean): Promise<boolean>;
   updateRepositoryActiveStatus(githubRepoId: string, isActive: boolean): Promise<boolean>;
-  getUserByGithubEmail(email: string): Promise<any | null>;
-  getUserByGithubUsername(username: string): Promise<any | null>;
+  getUserByGithubEmail(email: string): Promise<User | null>;
+  getUserByGithubUsername(username: string): Promise<User | null>;
 }
 
 // Define PromptTransactionType enum locally if not imported from a shared types file
@@ -237,13 +238,13 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getUserByGithubUsername(username: string) {
+  async getUserByGithubUsername(username: string): Promise<User | null> {
     try {
-      
+
       const user = await db.query.users.findFirst({
         where: eq(users.githubUsername, username)
       });
-      
+
       return user || null;
     } catch (error) {
       console.error("Error getting user by GitHub username:", error);
@@ -1618,7 +1619,7 @@ export class DatabaseStorage implements IStorage {
    * Get a user by their email address
    * Used for checking email opt-out preferences before sending notifications
    */
-  async getUserByGithubEmail(email: string): Promise<any | null> {
+  async getUserByGithubEmail(email: string): Promise<User | null> {
     try {
       log(`Getting user by email: ${email}`, 'storage');
       const user = await db.query.users.findFirst({
@@ -1642,9 +1643,41 @@ export class DatabaseStorage implements IStorage {
    * Delete user account and all associated data
    * This is a hard delete that removes the user and all related records
    * Cascade deletes handle most related tables automatically
+   *
+   * Before deletion, check that user has no wallet assets to prevent loss of funds
    */
   async deleteUser(userId: number): Promise<boolean> {
     try {
+      log(`Checking wallet balance before deleting user account: ${userId}`, 'storage');
+
+      // Get user to check wallet address
+      const user = await this.getUserById(userId);
+      if (!user) {
+        log(`No user found with ID: ${userId}`, 'storage');
+        return false;
+      }
+
+      if (!user.xdcWalletAddress) {
+        log(`User ${userId} has no wallet address, proceeding with deletion`, 'storage');
+      } else {
+        // Check wallet balances before allowing deletion
+        const walletInfo = await blockchain.getWalletInfo(userId);
+
+        // Check if user has any significant balances
+        const hasXdcBalance = walletInfo.balance && walletInfo.balance > BigInt(0);
+        const hasTokenBalance = walletInfo.tokenBalance && walletInfo.tokenBalance > BigInt(0);
+
+        if (hasXdcBalance || hasTokenBalance) {
+          log(`User ${userId} has wallet balance, preventing deletion. XDC: ${walletInfo.balance}, Token: ${walletInfo.tokenBalance}`, 'storage');
+
+          throw new Error(
+            `Cannot delete account: Wallet has funds. Please transfer funds before account deletion.`
+          );
+        } else {
+          log(`User ${userId} has no wallet assets, safe to proceed with deletion`, 'storage');
+        }
+      }
+
       log(`Deleting user account: ${userId}`, 'storage');
 
       // Delete the user record (cascade will handle most related records)

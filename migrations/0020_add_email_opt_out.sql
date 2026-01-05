@@ -1,5 +1,11 @@
--- Add email_opt_out column to users table
-ALTER TABLE users ADD COLUMN email_opt_out BOOLEAN DEFAULT FALSE;
+-- Add email_opt_out column to users table if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'users' AND column_name = 'email_opt_out') THEN
+        ALTER TABLE users ADD COLUMN email_opt_out BOOLEAN DEFAULT FALSE;
+    END IF;
+END $$;
 
 -- Create index for better query performance
 CREATE INDEX IF NOT EXISTS idx_users_email_opt_out ON users(email_opt_out);

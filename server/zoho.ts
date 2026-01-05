@@ -218,22 +218,6 @@ export async function sendBountyNotification(
       return false;
     }
 
-    // Extract the repository owner from the repo name (format is owner/repo)
-    const [repoOwner] = repoName.split('/');
-
-    if (!repoOwner) {
-      log(`Could not extract repository owner from: ${repoName}`, 'zoho');
-      return false;
-    }
-
-    // Check if the repository owner has opted out of email notifications
-    // First we need to find the user by GitHub username
-    const user = await storage.getUserByGithubUsername(repoOwner);
-    if (user && user.emailOptOut === true) {
-      log(`Repository owner ${repoOwner} has opted out of email notifications. Skipping bounty notification.`, 'zoho');
-      return false; // Don't send notification if user opted out
-    }
-
     const token = await getZohoAccessToken();
 
     // Extract the actual issue number from the URL (the last segment after 'issues/')

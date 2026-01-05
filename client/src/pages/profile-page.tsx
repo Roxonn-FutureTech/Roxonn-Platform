@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/use-auth";
 import { useWallet } from "@/hooks/use-wallet";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -375,6 +376,7 @@ export default function ProfilePage() {
 // Email Notifications Toggle Component
 function EmailNotificationsToggle() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [optOut, setOptOut] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -394,7 +396,13 @@ function EmailNotificationsToggle() {
         const data = await response.json();
         setOptOut(data.optOut);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load preferences');
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load preferences';
+        setError(errorMessage);
+        toast({
+          title: 'Error Loading Preferences',
+          description: errorMessage,
+          variant: 'destructive',
+        });
       } finally {
         setLoading(false);
       }
@@ -403,7 +411,7 @@ function EmailNotificationsToggle() {
     if (user) {
       fetchPreferences();
     }
-  }, [user]);
+  }, [user, toast]);
 
   const updatePreferences = async (newOptOut: boolean) => {
     try {
@@ -425,8 +433,22 @@ function EmailNotificationsToggle() {
       }
 
       setOptOut(newOptOut);
+
+      // Show success toast
+      toast({
+        title: 'Preferences Updated',
+        description: newOptOut
+          ? 'Email notifications have been turned off'
+          : 'Email notifications have been turned on',
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update preferences');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update preferences';
+      setError(errorMessage);
+      toast({
+        title: 'Update Failed',
+        description: errorMessage,
+        variant: 'destructive',
+      });
       // Revert the toggle if it failed
       setOptOut(!newOptOut);
     } finally {
@@ -457,6 +479,11 @@ function EmailNotificationsToggle() {
       <span className="text-sm font-medium">
         {optOut ? 'OFF' : 'ON'}
       </span>
+      {error && (
+        <div className="text-red-500 text-xs mt-1">
+          Error: {error}
+        </div>
+      )}
     </div>
   );
 }
