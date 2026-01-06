@@ -218,6 +218,13 @@ export async function sendBountyNotification(
       return false;
     }
 
+    // Check if bounty notifications should be sent based on opt-out preferences
+    const canSend = await canSendBountyNotification(repoName, bountyAmount);
+    if (!canSend) {
+      log(`Skipping bounty notification for ${repoName} as opt-out conditions are met`, 'zoho');
+      return true; // Return success to avoid retries even though we didn't send
+    }
+
     const token = await getZohoAccessToken();
 
     // Extract the actual issue number from the URL (the last segment after 'issues/')
@@ -297,10 +304,12 @@ export async function sendBountyNotification(
  * @param {string} email User's email address
  * @returns {Promise<boolean>} True if user has opted out of emails
  */
+// This function is kept for general purpose opt-out checking, but not directly used by sendBountyNotification
+// since that function creates a record that Zoho then processes for multiple recipients
 export async function hasUserOptedOut(email: string): Promise<boolean> {
   try {
     if (!email) {
-      log(`No email provided, cannot check opt-out status`, 'zoho');
+      // No need to log this as it's an expected case
       return false;
     }
 
@@ -308,17 +317,58 @@ export async function hasUserOptedOut(email: string): Promise<boolean> {
     const user = await storage.getUserByGithubEmail(email);
 
     if (!user) {
-      log(`No user found with email: ${email}`, 'zoho');
+      // No need to log PII - this is an expected case
       return false;
     }
 
     // Return true if user has opted out, false otherwise
-    const isOptedOut = user.emailOptOut === true;
-    log(`User with email ${email} has email_opt_out: ${isOptedOut}`, 'zoho');
-    return isOptedOut;
+    return user.emailOptOut === true;
   } catch (error) {
-    log(`Error checking user email opt-out status for ${email}: ${error instanceof Error ? error.message : String(error)}`, 'zoho');
+    // Log the error but avoid including email address for privacy
+    log(`Error checking user email opt-out status: ${error instanceof Error ? error.message : String(error)}`, 'zoho');
     // If there's an error, we'll assume the user has NOT opted out to be safe
     return false;
+  }
+}
+
+/**
+ * Check if bounty notifications should be sent by verifying if there are
+ * any users who would receive the notification and haven't opted out.
+ * For now, this checks the repository owner/creator who would typically be notified.
+ *
+ * @param repoName Repository name to check for interested parties
+ * @param bountyAmount Amount of the bounty (for logging purposes)
+ * @returns boolean indicating if notifications can be sent
+ */
+export async function canSendBountyNotification(repoName: string, bountyAmount: string): Promise<boolean> {
+  try {
+    // For now, we'll check if the repository owner (typically the creator/funder)
+    // has opted out. In a more comprehensive system, we would check all
+    // interested contributors to this repository.
+
+    // Extract repository owner from repo name (format: owner/repo)
+    const [repoOwner] = repoName.split('/');
+
+    if (!repoOwner) {
+      log(`Could not extract repository owner from: ${repoName}`, 'zoho');
+      return false;
+    }
+
+    // Find the user by GitHub username
+    const user = await storage.getUserByGithubUsername(repoOwner);
+    if (user && user.emailOptOut === true) {
+      log(`Repository owner ${repoOwner} has opted out. Skipping bounty notification for ${bountyAmount} bounty.`, 'zoho');
+      return false;
+    }
+
+    // Additional check: we could also check if there are any known contributors
+    // to this repository who have NOT opted out, but for now checking the repository
+    // owner/creator is a good first step
+
+    return true; // Can send notification
+  } catch (error) {
+    log(`Error in canSendBountyNotification: ${error instanceof Error ? error.message : String(error)}`, 'zoho');
+    // If there's an error, we'll assume we can send the notification to avoid blocking functionality
+    return true;
   }
 }

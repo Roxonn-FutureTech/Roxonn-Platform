@@ -242,7 +242,7 @@ export class DatabaseStorage implements IStorage {
     try {
 
       const user = await db.query.users.findFirst({
-        where: eq(users.githubUsername, username)
+        where: sql`LOWER(${users.githubUsername}) = LOWER(${username})`
       });
 
       return user || null;
@@ -1621,17 +1621,14 @@ export class DatabaseStorage implements IStorage {
    */
   async getUserByGithubEmail(email: string): Promise<User | null> {
     try {
-      log(`Getting user by email: ${email}`, 'storage');
       const user = await db.query.users.findFirst({
         where: eq(users.email, email),
       });
 
       if (!user) {
-        log(`No user found with email: ${email}`, 'storage');
         return null;
       }
 
-      log(`User found with email: ${email}`, 'storage');
       return user;
     } catch (error) {
       log(`Error getting user by email: ${error instanceof Error ? error.message : String(error)}`, 'storage');
@@ -1666,9 +1663,11 @@ export class DatabaseStorage implements IStorage {
         // Check if user has any significant balances
         const hasXdcBalance = walletInfo.balance && walletInfo.balance > BigInt(0);
         const hasTokenBalance = walletInfo.tokenBalance && walletInfo.tokenBalance > BigInt(0);
+        // Check for USDC balance - this may exist in the walletInfo depending on the blockchain service implementation
+        const hasUsdcBalance = walletInfo.usdcBalance && walletInfo.usdcBalance > BigInt(0);
 
-        if (hasXdcBalance || hasTokenBalance) {
-          log(`User ${userId} has wallet balance, preventing deletion. XDC: ${walletInfo.balance}, Token: ${walletInfo.tokenBalance}`, 'storage');
+        if (hasXdcBalance || hasTokenBalance || hasUsdcBalance) {
+          log(`User ${userId} has wallet balance, preventing deletion. XDC: ${walletInfo.balance}, Token: ${walletInfo.tokenBalance}, USDC: ${walletInfo.usdcBalance || '0'}`, 'storage');
 
           throw new Error(
             `Cannot delete account: Wallet has funds. Please transfer funds before account deletion.`

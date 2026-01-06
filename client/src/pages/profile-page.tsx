@@ -305,6 +305,9 @@ export default function ProfilePage() {
               <p className="text-muted-foreground">Manage your email preferences and account</p>
             </div>
 
+            {/* Visual separator */}
+            <div className="h-px w-full bg-gradient-to-r from-transparent via-purple-500 to-transparent"></div>
+
             {/* Email Notifications Card */}
             <motion.div variants={itemVariants} className="card-noir p-6">
               <div className="flex items-center justify-between mb-4">
@@ -456,18 +459,26 @@ function EmailNotificationsToggle() {
     }
   };
 
+  // Loading skeleton
+  if (loading) {
+    return (
+      <div className="flex items-center gap-3">
+        <div className="h-6 w-11 bg-gray-300/50 animate-pulse rounded-full"></div>
+        <span className="text-sm font-medium text-gray-300 animate-pulse">ON</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center gap-3">
-      {loading ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-3">
         <button
           onClick={() => updatePreferences(!optOut)}
           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
             optOut ? 'bg-gray-300' : 'bg-primary'
           }`}
           disabled={loading}
-          aria-label="Toggle email notifications"
+          aria-label={optOut ? 'Email notifications are turned off' : 'Email notifications are turned on'}
         >
           <span
             className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
@@ -475,12 +486,12 @@ function EmailNotificationsToggle() {
             }`}
           />
         </button>
-      )}
-      <span className="text-sm font-medium">
-        {optOut ? 'OFF' : 'ON'}
-      </span>
+        <span className="text-sm font-medium">
+          {optOut ? 'OFF' : 'ON'}
+        </span>
+      </div>
       {error && (
-        <div className="text-red-500 text-xs mt-1">
+        <div className="text-red-500 text-xs">
           Error: {error}
         </div>
       )}
@@ -507,10 +518,16 @@ function DeleteAccountButton() {
       setLoading(true);
       setError(null);
 
+      // Get CSRF token from meta tag or wherever it's stored in your app
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
+                       document.querySelector('meta[name="xsrf-token"]')?.getAttribute('content') ||
+                       '';
+
       const response = await fetch('/api/user/delete-account', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
         },
         credentials: 'include',
         body: JSON.stringify({ confirmUsername })
@@ -533,11 +550,23 @@ function DeleteAccountButton() {
     }
   };
 
+  // Include redirect countdown in success state - must be at top level
+  const [countdown, setCountdown] = React.useState(2);
+
+  React.useEffect(() => {
+    if (success && countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    } else if (success && countdown === 0) {
+      window.location.href = '/auth';
+    }
+  }, [countdown, success]);
+
   if (success) {
     return (
       <div className="text-green-500">
         <CheckCircle className="h-5 w-5 inline mr-2" />
-        Account deleted successfully. Redirecting...
+        Account deleted successfully. Redirecting in {countdown}s...
       </div>
     );
   }
@@ -573,8 +602,9 @@ function DeleteAccountButton() {
               'Confirm Delete'
             )}
           </Button>
+          {/* Make Cancel a text button instead of outlined for better hierarchy */}
           <Button
-            variant="outline"
+            variant="ghost"
             onClick={() => {
               setShowConfirm(false);
               setConfirmUsername('');

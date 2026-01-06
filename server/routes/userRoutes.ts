@@ -10,13 +10,29 @@ import { db } from '../db';
 const router = Router();
 
 // Rate limiter for account deletion (1 request per hour in production, 10 per hour in development)
+// Uses per-user rate limiting instead of IP to handle multiple users behind same IP (VPNs, corporate networks)
 const deleteAccountLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: process.env.NODE_ENV === 'production' ? 1 : 10, // Limit to 1 request per hour in prod, 10 in dev
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => {
+    // Use user ID as the key for per-user rate limiting
+    return req.user?.id?.toString() || req.ip;
+  },
   message: {
     error: 'Too many account deletion requests, please try again after an hour'
+  }
+});
+
+// Rate limiter for email preferences updates (10 requests per hour per user in production, 50 in development)
+const emailPreferencesLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: process.env.NODE_ENV === 'production' ? 10 : 50, // Limit to 10 email preference changes per hour in prod, 50 in dev
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Too many email preference update requests, please try again after an hour'
   }
 });
 
@@ -45,7 +61,30 @@ router.post('/delete-account', deleteAccountLimiter, requireAuth, csrfProtection
       return res.status(400).json({ error: 'Username confirmation does not match' });
     }
 
-    // Delete the user account (this will cascade delete related data)
+    // Clear the user's session FIRST before deleting the user data
+    // This ensures the user is properly logged out before their account is removed
+    await new Promise<void>((resolve, reject) => {
+      req.logout((err) => {
+        if (err) {
+          log(`Error logging out user before account deletion: ${err}`, 'session');
+          // Continue anyway despite logout error
+        }
+        resolve();
+      });
+    });
+
+    // Then destroy the session
+    await new Promise<void>((resolve, reject) => {
+      req.session.destroy((err) => {
+        if (err) {
+          log(`Error destroying session before account deletion: ${err}`, 'session');
+          // Continue anyway despite session destruction error
+        }
+        resolve();
+      });
+    });
+
+    // Finally, delete the user account (this will cascade delete related data)
     // Will throw an error if user has wallet assets (prevents accidental fund loss)
     try {
       const success = await storage.deleteUser(userId);
@@ -54,24 +93,8 @@ router.post('/delete-account', deleteAccountLimiter, requireAuth, csrfProtection
         return res.status(404).json({ error: 'User not found' });
       }
 
-      // Clear the user's session first
-      req.logout((err) => {
-        if (err) {
-          log(`Error logging out user after account deletion: ${err}`, 'session');
-          // Continue with session destruction even if logout fails
-        }
-
-        // Destroy the session and send response only after session is destroyed
-        req.session.destroy((err) => {
-          if (err) {
-            log(`Error destroying session after account deletion: ${err}`, 'session');
-            // Still send success response even if session destruction fails
-          }
-
-          log(`User account deleted successfully: ${userId}`, 'user-deletion');
-          res.json({ success: true, message: 'Account deleted successfully' });
-        });
-      });
+      log(`User account deleted and session cleared successfully: ${userId}`, 'user-deletion');
+      res.json({ success: true, message: 'Account deleted successfully' });
     } catch (error) {
       // Handle cases where user has wallet assets
       log(`Error deleting user account: ${error instanceof Error ? error.message : String(error)}`, 'user-deletion');
@@ -86,7 +109,7 @@ router.post('/delete-account', deleteAccountLimiter, requireAuth, csrfProtection
 });
 
 // PATCH /api/user/email-preferences - Update email preferences
-router.patch('/email-preferences', requireAuth, async (req, res) => {
+router.patch('/email-preferences', emailPreferencesLimiter, requireAuth, csrfProtection, async (req, res) => {
   try {
     const { optOut } = req.body;
     const userId = req.user?.id;
@@ -113,10 +136,10 @@ router.patch('/email-preferences', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: 'Email preferences updated successfully',
-      emailOptOut: updatedUser.emailOptOut
+      optOut: updatedUser.emailOptOut
     });
   } catch (error) {
     log(`Error updating user email preferences: ${error instanceof Error ? error.message : String(error)}`, 'email-preferences');
