@@ -36,6 +36,15 @@ const emailPreferencesLimiter = rateLimit({
   max: process.env.NODE_ENV === 'production' ? 30 : 60, // Limit to 30 email preference changes per hour in prod, 60 in dev
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => {
+    // Use user ID as the key for per-user rate limiting
+    // If for any reason the user is not authenticated, throw an error
+    // since rate limiting is only needed for authenticated users
+    if (!req.user?.id) {
+      throw new Error('Rate limiter called for unauthenticated user');
+    }
+    return req.user.id.toString();
+  },
   message: {
     error: 'Too many email preference update requests, please try again after an hour'
   }

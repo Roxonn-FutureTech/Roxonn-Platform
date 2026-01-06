@@ -82,6 +82,16 @@ interface TokenContract extends ethers.Contract {
     allowance(owner: string, spender: string): Promise<bigint>;
 }
 
+/**
+ * Interface for wallet information containing balances for all supported currencies
+ */
+interface WalletInfo {
+  address: string;
+  balance: bigint;        // XDC balance
+  tokenBalance: bigint;   // ROXN token balance
+  usdcBalance: bigint;    // USDC token balance
+}
+
 /*
  * Community Bounty Escrow Contract Interface
  * WHY: Type-safe interface for community bounty operations
@@ -1140,7 +1150,7 @@ export class BlockchainService {
         }
     }
 
-    async getWalletInfo(userId: string | number) {
+    async getWalletInfo(userId: string | number): Promise<WalletInfo> {
         try {
             log(`Fetching wallet info for user ${userId}`, "blockchain");
             const wallet = await storage.getWallet(userId.toString());

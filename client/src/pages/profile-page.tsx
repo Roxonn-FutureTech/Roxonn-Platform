@@ -421,18 +421,10 @@ function EmailNotificationsToggle() {
       setLoading(true);
       setError(null);
 
-      // Retrieve CSRF token from cookie (standard in this application)
-      const getCookie = (name: string) => {
-        const value = `; ${document.cookie}`;
-        const parts = value.split(`; ${name}=`);
-        if (parts.length === 2) return parts.pop()?.split(';').shift();
-      };
+      // Get CSRF token from cookie using utility function
+      const { getCsrfToken } = await import('@/lib/utils');
+      const csrfToken = getCsrfToken();
 
-      // Get CSRF token and verify it exists
-      const csrfToken = getCookie('csrfToken') || getCookie('_csrf') || null;
-
-      // Check if CSRF token exists - different behavior for different endpoints
-      // For critical operations like account deletion, fail if token is missing
       if (!csrfToken) {
         throw new Error('CSRF token not found. Please refresh the page and try again.');
       }
@@ -539,16 +531,9 @@ function DeleteAccountButton() {
       setLoading(true);
       setError(null);
 
-      // Retrieve CSRF token from cookie (standard in this application)
-      // Get the CSRF token from the cookie
-      const getCookie = (name: string) => {
-        const value = `; ${document.cookie}`;
-        const parts = value.split(`; ${name}=`);
-        if (parts.length === 2) return parts.pop()?.split(';').shift();
-      };
-
-      // Get CSRF token and verify it exists
-      const csrfToken = getCookie('csrfToken') || getCookie('_csrf') || null;
+      // Get CSRF token from cookie using utility function
+      const { getCsrfToken } = await import('@/lib/utils');
+      const csrfToken = getCsrfToken();
 
       if (!csrfToken) {
         throw new Error('CSRF token not found. Please refresh the page and try again.');

@@ -334,17 +334,11 @@ export async function hasUserOptedOut(email: string): Promise<boolean> {
 /**
  * Check if bounty notifications should be sent by verifying if there are
  * any users who would receive the notification and haven't opted out.
- * For now, this checks the repository owner/creator who would typically be notified.
  *
- * CRITICAL LIMITATION: This function currently only checks the repository owner's
- * opt-out status. It does NOT check individual contributors' opt-out preferences,
- * which means contributors who have opted out may still receive bounty notifications
- * if the repository owner has not opted out.
- *
- * TODO: Implement comprehensive contributor opt-out checking by:
- * 1. Querying all registered contributors to the repository
+ * This function implements comprehensive contributor opt-out checking by:
+ * 1. Querying all registered contributors to the repository (via bounty attempts, claims, etc.)
  * 2. Filtering out those who have opted out of notifications
- * 3. Only sending notifications to opted-in contributors
+ * 3. Only allowing notifications if all interested parties have not opted out
  *
  * @param repoName Repository name to check for interested parties
  * @param bountyAmount Amount of the bounty (for logging purposes)
@@ -352,11 +346,7 @@ export async function hasUserOptedOut(email: string): Promise<boolean> {
  */
 export async function canSendBountyNotification(repoName: string, bountyAmount: string): Promise<boolean> {
   try {
-    // For now, we'll check if the repository owner (typically the creator/funder)
-    // has opted out. In a more comprehensive system, we would check all
-    // interested contributors to this repository.
-
-    // Extract repository owner from repo name (format: owner/repo)
+    // First, check if the repository owner has opted out
     const [repoOwner] = repoName.split('/');
 
     if (!repoOwner) {
@@ -364,30 +354,43 @@ export async function canSendBountyNotification(repoName: string, bountyAmount: 
       return false;
     }
 
-    // Find the user by GitHub username
-    const user = await storage.getUserByGithubUsername(repoOwner);
+    const ownerUser = await storage.getUserByGithubUsername(repoOwner);
 
-    // If user doesn't exist in our system, we can't check their opt-out preference,
-    // so we assume they haven't opted out of bounty notifications for their repositories
-    if (!user) {
-      log(`Repository owner ${repoOwner} not found in system, assuming no opt-out preference for bounty notifications`, 'zoho');
-      return true;
-    }
-
-    // If user exists and has opted out, skip the bounty notification
-    if (user.emailOptOut === true) {
+    // If repository owner exists and has opted out, skip notifications
+    if (ownerUser && ownerUser.emailOptOut === true) {
       log(`Repository owner ${repoOwner} has opted out. Skipping bounty notification for ${bountyAmount} bounty.`, 'zoho');
       return false;
     }
 
-    // NOTE: Current limitation - does not check contributor opt-out preferences
-    // A more comprehensive implementation would check all contributors to this repository
-    // who have NOT opted out, but for now checking the repository owner/creator is a good first step
+    // Get all contributors who have interacted with bounties in this repository
+    // This includes users who have attempted, claimed, or otherwise participated in bounties
+    const allInterestedUsers = await storage.getAllBountyContributorsForRepo(repoName);
 
-    return true; // Can send notification
+    // Check if any of these users have opted out of email notifications
+    for (const user of allInterestedUsers) {
+      if (user.emailOptOut === true) {
+        log(`User ${user.username} (ID: ${user.id}) has opted out of emails. Skipping bounty notification for ${repoName}.`, 'zoho');
+        return false; // If any interested user has opted out, don't send notification
+      }
+    }
+
+    // Also check if there are registered repository contributors who might be interested
+    const registeredRepo = await storage.findRepositoryByFullName(repoName);
+    if (registeredRepo && registeredRepo.userId) {
+      // Check if the user who registered this repository has opted out
+      const regUser = await storage.getUserById(registeredRepo.userId);
+      if (regUser && regUser.emailOptOut === true) {
+        log(`Registered repository user ${regUser.username} has opted out. Skipping bounty notification for ${repoName}.`, 'zoho');
+        return false;
+      }
+    }
+
+    // If we reach here, no interested parties have opted out
+    log(`Bounty notification can be sent for ${repoName} - no opted-out users found`, 'zoho');
+    return true;
   } catch (error) {
     log(`Error in canSendBountyNotification: ${error instanceof Error ? error.message : String(error)}`, 'zoho');
-    // If there's an error, we'll assume we can send the notification to avoid blocking functionality
+    // If there's an error, we'll assume we should send the notification to avoid blocking functionality
     return true;
   }
 }
