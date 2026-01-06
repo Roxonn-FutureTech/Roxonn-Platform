@@ -32,10 +32,13 @@ export const users = pgTable("users", {
   githubPrivateAccessToken: text("github_private_access_token"),
 
   // Referral system fields
-  referredBy: integer("referred_by"), // User ID who referred this user
+  referredBy: integer("referred_by").references(() => users.id, { onDelete: 'set null' }), // User ID who referred this user
   totalUsdcEarned: decimal("total_usdc_earned", { precision: 10, scale: 6 }).default("0"),
   totalRoxnEarned: decimal("total_roxn_earned", { precision: 18, scale: 8 }).default("0"),
   totalReferrals: integer("total_referrals").default(0),
+
+  // Email opt-out preference
+  emailOptOut: boolean("email_opt_out").default(false),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -558,7 +561,7 @@ export const promotionalSubmissions = pgTable("promotional_submissions", {
   proofLinks: jsonb("proof_links").notNull().default([]),
   description: text("description"),
   reviewedAt: timestamp("reviewed_at", { mode: 'date', withTimezone: true }),
-  reviewedBy: integer("reviewed_by").references(() => users.id),
+  reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: 'set null' }),
   reviewNotes: text("review_notes"),
   createdAt: timestamp("created_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
@@ -614,7 +617,7 @@ export const bountyRequests = pgTable("bounty_requests", {
   status: text("status").default("pending").notNull(), // pending, approved, rejected
   createdAt: timestamp("created_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
   processedAt: timestamp("processed_at", { mode: 'date', withTimezone: true }),
-  processedBy: integer("processed_by").references(() => users.id),
+  processedBy: integer("processed_by").references(() => users.id, { onDelete: 'set null' }),
 });
 
 export type BountyRequest = typeof bountyRequests.$inferSelect;

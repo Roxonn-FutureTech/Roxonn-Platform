@@ -2,6 +2,7 @@
 import axios from 'axios';
 import { log } from './utils';
 import { config } from './config';
+import { storage } from './storage';
 
 // Zoho API endpoints - Using India region
 const ZOHO_ACCOUNTS_URL = 'https://accounts.zoho.in';
@@ -193,7 +194,7 @@ export function isZohoConfigured(): boolean {
  * Send a notification to Zoho CRM when a bounty is allocated to an issue
  * This will create a record in the Bounty_Notifications module which triggers
  * a custom function to send emails to all contributors
- * 
+ *
  * @param {string} repoName Repository name
  * @param {number} issueId Issue ID
  * @param {string} issueTitle Issue title
@@ -217,6 +218,13 @@ export async function sendBountyNotification(
       return false;
     }
 
+    // Check if bounty notifications should be sent based on opt-out preferences
+    const canSend = await canSendBountyNotification(repoName, bountyAmount);
+    if (!canSend) {
+      log(`Skipping bounty notification for ${repoName} as opt-out conditions are met`, 'zoho');
+      return true; // Return success to avoid retries even though we didn't send
+    }
+
     const token = await getZohoAccessToken();
 
     // Extract the actual issue number from the URL (the last segment after 'issues/')
@@ -236,7 +244,7 @@ export async function sendBountyNotification(
     }
 
     // Convert bountyAmount to a float, handle potential errors
-    const bountyAmountFloat = parseFloat(bountyAmount); 
+    const bountyAmountFloat = parseFloat(bountyAmount);
     if (isNaN(bountyAmountFloat)) {
         log(`Error converting bountyAmount '${bountyAmount}' to float for Zoho notification`, 'zoho');
         return false;
@@ -286,5 +294,103 @@ export async function sendBountyNotification(
     log(`Error creating bounty notification in Zoho: ${error.message}`, 'zoho');
     // Don't let Zoho errors affect the main application process
     return false;
+  }
+}
+
+/**
+ * Check if a user has opted out of email notifications
+ * This is used to prevent sending bounty notifications to opted-out users
+ *
+ * @param {string} email User's email address
+ * @returns {Promise<boolean>} True if user has opted out of emails
+ */
+// This function is kept for general purpose opt-out checking, but not directly used by sendBountyNotification
+// since that function creates a record that Zoho then processes for multiple recipients
+export async function hasUserOptedOut(email: string): Promise<boolean> {
+  try {
+    if (!email) {
+      // No need to log this as it's an expected case
+      return false;
+    }
+
+    // Find user by email
+    const user = await storage.getUserByGithubEmail(email);
+
+    if (!user) {
+      // No need to log PII - this is an expected case
+      return false;
+    }
+
+    // Return true if user has opted out, false otherwise
+    return user.emailOptOut === true;
+  } catch (error) {
+    // Log the error but avoid including email address for privacy
+    log(`Error checking user email opt-out status: ${error instanceof Error ? error.message : String(error)}`, 'zoho');
+    // If there's an error, we'll assume the user has NOT opted out to be safe
+    return false;
+  }
+}
+
+/**
+ * Check if bounty notifications should be sent by verifying if there are
+ * any users who would receive the notification and haven't opted out.
+ *
+ * This function implements comprehensive contributor opt-out checking by:
+ * 1. Querying all registered contributors to the repository (via bounty attempts, claims, etc.)
+ * 2. Filtering out those who have opted out of notifications
+ * 3. Only allowing notifications if all interested parties have not opted out
+ *
+ * @param repoName Repository name to check for interested parties
+ * @param bountyAmount Amount of the bounty (for logging purposes)
+ * @returns boolean indicating if notifications can be sent
+ */
+export async function canSendBountyNotification(repoName: string, bountyAmount: string): Promise<boolean> {
+  try {
+    // First, check if the repository owner has opted out
+    const [repoOwner] = repoName.split('/');
+
+    if (!repoOwner) {
+      log(`Could not extract repository owner from: ${repoName}`, 'zoho');
+      return false;
+    }
+
+    const ownerUser = await storage.getUserByGithubUsername(repoOwner);
+
+    // If repository owner exists and has opted out, skip notifications
+    if (ownerUser && ownerUser.emailOptOut === true) {
+      log(`Repository owner ${repoOwner} has opted out. Skipping bounty notification for ${bountyAmount} bounty.`, 'zoho');
+      return false;
+    }
+
+    // Get all contributors who have interacted with bounties in this repository
+    // This includes users who have attempted, claimed, or otherwise participated in bounties
+    const allInterestedUsers = await storage.getAllBountyContributorsForRepo(repoName);
+
+    // Check if any of these users have opted out of email notifications
+    for (const user of allInterestedUsers) {
+      if (user.emailOptOut === true) {
+        log(`User ${user.username} (ID: ${user.id}) has opted out of emails. Skipping bounty notification for ${repoName}.`, 'zoho');
+        return false; // If any interested user has opted out, don't send notification
+      }
+    }
+
+    // Also check if there are registered repository contributors who might be interested
+    const registeredRepo = await storage.findRepositoryByFullName(repoName);
+    if (registeredRepo && registeredRepo.userId) {
+      // Check if the user who registered this repository has opted out
+      const regUser = await storage.getUserById(registeredRepo.userId);
+      if (regUser && regUser.emailOptOut === true) {
+        log(`Registered repository user ${regUser.username} has opted out. Skipping bounty notification for ${repoName}.`, 'zoho');
+        return false;
+      }
+    }
+
+    // If we reach here, no interested parties have opted out
+    log(`Bounty notification can be sent for ${repoName} - no opted-out users found`, 'zoho');
+    return true;
+  } catch (error) {
+    log(`Error in canSendBountyNotification: ${error instanceof Error ? error.message : String(error)}`, 'zoho');
+    // If there's an error, we'll assume we should send the notification to avoid blocking functionality
+    return true;
   }
 }

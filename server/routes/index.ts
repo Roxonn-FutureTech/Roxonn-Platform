@@ -15,6 +15,7 @@ import walletRoutes from './walletRoutes';
 import multiCurrencyWalletRoutes from './multiCurrencyWallet';
 import aiScopingAgentRouter from './aiScopingAgent';
 import leaderboardRoutes from './leaderboardRoutes';
+import userRoutes from './userRoutes';
 
 /**
  * Register all modular route handlers
@@ -68,5 +69,8 @@ export function registerModularRoutes(app: Express) {
 
   // Leaderboard routes
   app.use('/api/leaderboard', leaderboardRoutes);
+
+  // User routes (account settings, preferences)
+  app.use('/api/user', userRoutes);
 }
 

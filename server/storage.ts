@@ -10,6 +10,7 @@ import { getWalletMnemonic, getWalletPrivateKey } from './tatum';
 import { storeWalletSecret } from './aws';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from './config';
+import { User } from '../shared/schema';
 import { S3Client, PutObjectCommand, GetObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { KMSClient, EncryptCommand, DecryptCommand } from '@aws-sdk/client-kms';
@@ -58,6 +59,11 @@ export interface IStorage {
   getUserPromptBalance(userId: number): Promise<number>;
   updateRepositoryVisibility(githubRepoId: string, isPrivate: boolean): Promise<boolean>;
   updateRepositoryActiveStatus(githubRepoId: string, isActive: boolean): Promise<boolean>;
+  getUserByGithubEmail(email: string): Promise<User | null>;
+  getUserByGithubUsername(username: string): Promise<User | null>;
+  deleteUser(userId: number): Promise<boolean>;
+  getAllBountyContributorsForRepo(repoFullName: string): Promise<User[]>;
+  findRepositoryByFullName(fullName: string): Promise<any | null>;
 }
 
 // Define PromptTransactionType enum locally if not imported from a shared types file
@@ -235,13 +241,13 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getUserByGithubUsername(username: string) {
+  async getUserByGithubUsername(username: string): Promise<User | null> {
     try {
-      
+
       const user = await db.query.users.findFirst({
-        where: eq(users.githubUsername, username)
+        where: sql`LOWER(${users.githubUsername}) = LOWER(${username})`
       });
-      
+
       return user || null;
     } catch (error) {
       console.error("Error getting user by GitHub username:", error);
@@ -1612,6 +1618,278 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  /**
+   * Get a user by their email address
+   * Used for checking email opt-out preferences before sending notifications
+   */
+  async getUserByGithubEmail(email: string): Promise<User | null> {
+    try {
+      const user = await db.query.users.findFirst({
+        where: eq(users.email, email),
+      });
+
+      if (!user) {
+        return null;
+      }
+
+      return user;
+    } catch (error) {
+      log(`Error getting user by email: ${error instanceof Error ? error.message : String(error)}`, 'storage');
+      throw error;
+    }
+  }
+
+  /**
+   * Delete user account and all associated data
+   * This is a hard delete that removes the user and all related records
+   *
+   * CASCADE DELETE RELATIONSHIPS:
+   * - registered_repositories: userId -> users.id (CASCADE)
+   * - onramp_transactions: userId -> users.id (CASCADE)
+   * - prompt_transactions: userId -> users.id (CASCADE)
+   * - social_verifications: userId -> users.id (CASCADE)
+   * - subscriptions: userId -> users.id (CASCADE)
+   * - subscription_events: subscriptionId -> subscriptions.id -> users.id (CASCADE)
+   * - referral_codes: userId -> users.id (CASCADE)
+   * - referrals: referrer_id/referred_id -> users.id (CASCADE)
+   * - referral_rewards: userId -> users.id (CASCADE)
+   * - payout_requests: userId -> users.id (CASCADE)
+   * - promotional_bounties: creatorId -> users.id (CASCADE)
+   * - promotional_submissions: contributorId -> users.id (CASCADE)
+   * - bounty_requests: requestedBy -> users.id (REFERENCES user.githubUsername, not direct FK)
+   *
+   * @param userId The ID of the user to delete
+   * @returns boolean indicating success
+   */
+  async deleteUser(userId: number): Promise<boolean> {
+    try {
+      log(`Checking wallet balance before deleting user account: ${userId}`, 'storage');
+
+      // Get user to check wallet address
+      const user = await this.getUserById(userId);
+      if (!user) {
+        log(`No user found with ID: ${userId}`, 'storage');
+        return false;
+      }
+
+      if (!user.xdcWalletAddress) {
+        log(`User ${userId} has no wallet address, proceeding with deletion`, 'storage');
+      } else {
+        // Check wallet balances before allowing deletion
+        const walletInfo = await blockchain.getWalletInfo(userId);
+
+        // Check if user has any significant balances
+        const hasXdcBalance = walletInfo.balance && walletInfo.balance > BigInt(0);
+        const hasTokenBalance = walletInfo.tokenBalance && walletInfo.tokenBalance > BigInt(0);
+        // Check for USDC balance - this may exist in the walletInfo depending on the blockchain service implementation
+        const hasUsdcBalance = walletInfo.usdcBalance && walletInfo.usdcBalance > BigInt(0);
+
+        if (hasXdcBalance || hasTokenBalance || hasUsdcBalance) {
+          log(`User ${userId} has wallet balance, preventing deletion`, 'storage');
+
+          throw new Error(
+            `Cannot delete account: Wallet has funds. Please transfer funds before account deletion.`
+          );
+        } else {
+          log(`User ${userId} has no wallet assets, safe to proceed with deletion`, 'storage');
+        }
+      }
+
+      log(`Deleting user account: ${userId}`, 'storage');
+
+      // Double-check wallet balances one final time before deletion to prevent TOCTOU
+      // Time-of-check to time-of-use race condition where user might have received funds
+      // after initial check but before the account deletion
+      if (user.xdcWalletAddress) {
+        const finalWalletInfo = await blockchain.getWalletInfo(userId);
+
+        const finalHasXdcBalance = finalWalletInfo.balance && finalWalletInfo.balance > BigInt(0);
+        const finalHasTokenBalance = finalWalletInfo.tokenBalance && finalWalletInfo.tokenBalance > BigInt(0);
+        const finalHasUsdcBalance = finalWalletInfo.usdcBalance && finalWalletInfo.usdcBalance > BigInt(0);
+
+        if (finalHasXdcBalance || finalHasTokenBalance || finalHasUsdcBalance) {
+          log(`Race condition detected: User ${userId} has received funds after initial check. Preventing deletion.`, 'storage');
+
+          throw new Error(
+            `Cannot delete account: Wallet has funds received after initial check. Please transfer funds before account deletion.`
+          );
+        }
+      }
+
+      // Proceed with deletion since we've confirmed balances are still zero
+      const deletedUsers = await db.delete(users)
+        .where(eq(users.id, userId))
+        .returning({ id: users.id });
+
+      if (deletedUsers.length === 0) {
+        log(`No user found to delete with ID: ${userId}`, 'storage');
+        return false;
+      }
+
+      log(`User account deleted successfully: ${userId}`, 'storage');
+      return true;
+    } catch (error) {
+      log(`Error deleting user: ${error instanceof Error ? error.message : String(error)}`, 'storage-ERROR');
+      throw error;
+    }
+  }
+
+  /**
+   * Get all contributors who have participated in bounty activities for this repository
+   * This includes users who have attempted, claimed, or shown interest in bounties
+   * for this repository.
+   *
+   * @param repoFullName Full name of repository (owner/repo)
+   * @returns Array of users who have participated in bounty activities for this repo
+   */
+  async getAllBountyContributorsForRepo(repoFullName: string): Promise<User[]> {
+    try {
+      log(`Getting all bounty contributors for repository: ${repoFullName}`, 'storage');
+
+      // Get the registered repo ID first
+      const registeredRepo = await db.query.registeredRepositories.findFirst({
+        where: eq(registeredRepositories.githubRepoFullName, repoFullName)
+      });
+
+      if (!registeredRepo) {
+        log(`Repository ${repoFullName} not found in registered repositories`, 'storage');
+        return [];
+      }
+
+      // This is a simplified approach - in a more complex system, we would query
+      // bounty_attempts, bounty_claims, community_bounties, etc. for participants
+      // For now, we'll return an empty array which means no additional opt-out checks
+      // beyond repository owner are performed
+
+      // In a real implementation, you would query tables like:
+      // - bountyAttempts where githubRepoOwner/githubRepoName matches
+      // - bountyClaims where related to this repository
+      // - communityBounties where creators and claimers are relevant
+      // - registeredRepository.contributors array field if it exists
+
+      // Query bounty_attempts for users who have worked on issues in this repository
+      // Note: This assumes there is a bounty_attempts table and contributorId field
+      let contributorUsers: User[] = [];
+
+      try {
+        // Extract owner and repo name from full repo name (format: owner/repo)
+        const repoParts = repoFullName.split('/');
+        const repoOwner = repoParts[0];
+        const repoName = repoParts.slice(1).join('/'); // Handle repo names with multiple slashes
+
+        if (repoOwner && repoName) {
+          // Query bounty_attempts table for contributors to this repository
+          // First try to query bounty attempts that match the repo
+          const attemptsResult = await db.execute(sql`
+            SELECT DISTINCT u.*
+            FROM bounty_attempts ba
+            JOIN users u ON ba."githubUsername" = u."githubUsername"
+            WHERE ba."githubRepoOwner" = ${repoOwner}
+              AND ba."githubRepoName" = ${repoName}
+          `);
+
+          if (attemptsResult && Array.isArray(attemptsResult.rows)) {
+            contributorUsers = attemptsResult.rows as User[];
+          }
+        }
+      } catch (attemptsError) {
+        // If bounty_attempts table doesn't exist or query fails,
+        // continue with empty contributor list - this is not a critical error
+        log(`No bounty_attempts table or error querying contributors for ${repoFullName}: ${attemptsError}`, 'storage');
+      }
+
+      // Also find users who have claimed community bounties in this repository
+      try {
+        const repoParts = repoFullName.split('/');
+        const repoOwner = repoParts[0];
+        const repoName = repoParts.slice(1).join('/');
+
+        if (repoOwner && repoName) {
+          const claimsResult = await db.execute(sql`
+            SELECT DISTINCT u.*
+            FROM community_bounties cb
+            JOIN users u ON cb."claimedByGithubUsername" = u."githubUsername"
+            WHERE cb."githubRepoOwner" = ${repoOwner}
+              AND cb."githubRepoName" = ${repoName}
+              AND cb."claimedByGithubUsername" IS NOT NULL
+          `);
+
+          if (claimsResult && Array.isArray(claimsResult.rows)) {
+            // Add unique contributors from claims to the list
+            for (const claimUser of claimsResult.rows as User[]) {
+              if (!contributorUsers.find(u => u.id === claimUser.id)) {
+                contributorUsers.push(claimUser);
+              }
+            }
+          }
+        }
+      } catch (claimsError) {
+        // If community_bounties table doesn't exist or query fails,
+        // continue with existing contributor list
+        log(`Error querying claimers for contributors to ${repoFullName}: ${claimsError}`, 'storage');
+      }
+
+      // Also include repository collaborators if available in registered repositories
+      try {
+        const repoRecord = await db.query.registeredRepositories.findFirst({
+          where: eq(registeredRepositories.githubRepoFullName, repoFullName)
+        });
+
+        if (repoRecord?.userId) {
+          // Get the user who registered this repository
+          const registrationUser = await this.getUserById(repoRecord.userId);
+          if (registrationUser && !contributorUsers.find(u => u.id === registrationUser.id)) {
+            contributorUsers.push(registrationUser);
+          }
+        } else if (repoRecord?.poolManagers && Array.isArray(repoRecord.poolManagers)) {
+          // If there are pool managers for this repository, add them
+          for (const managerAddress of repoRecord.poolManagers) {
+            const managerUser = await db.query.users.findFirst({
+              where: eq(users.xdcWalletAddress, managerAddress)
+            });
+            if (managerUser && !contributorUsers.find(u => u.id === managerUser.id)) {
+              contributorUsers.push(managerUser);
+            }
+          }
+        }
+      } catch (repoError) {
+        log(`Error querying registered repository for ${repoFullName}: ${repoError}`, 'storage');
+      }
+
+      log(`Found ${contributorUsers.length} bounty contributors for repository: ${repoFullName}`, 'storage');
+      return contributorUsers;
+    } catch (error) {
+      log(`Error getting bounty contributors for repository ${repoFullName}: ${error instanceof Error ? error.message : String(error)}`, 'storage');
+      throw error;
+    }
+  }
+
+  /**
+   * Find a registered repository by its full name (owner/repo)
+   *
+   * @param fullName Full name of repository in format owner/repo
+   * @returns Registered repository object or null if not found
+   */
+  async findRepositoryByFullName(fullName: string): Promise<any | null> {
+    try {
+      log(`Finding registered repository by full name: ${fullName}`, 'storage');
+
+      const repo = await db.query.registeredRepositories.findFirst({
+        where: eq(registeredRepositories.githubRepoFullName, fullName)
+      });
+
+      if (!repo) {
+        log(`No registered repository found with name: ${fullName}`, 'storage');
+        return null;
+      }
+
+      log(`Found registered repository: ${repo.id}`, 'storage');
+      return repo;
+    } catch (error) {
+      log(`Error finding repository by full name ${fullName}: ${error instanceof Error ? error.message : String(error)}`, 'storage');
+      throw error;
+    }
+  }
 }
 
 export const storage = new DatabaseStorage();

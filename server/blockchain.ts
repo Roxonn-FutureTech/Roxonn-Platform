@@ -82,6 +82,16 @@ interface TokenContract extends ethers.Contract {
     allowance(owner: string, spender: string): Promise<bigint>;
 }
 
+/**
+ * Interface for wallet information containing balances for all supported currencies
+ */
+interface WalletInfo {
+  address: string;
+  balance: bigint;        // XDC balance
+  tokenBalance: bigint;   // ROXN token balance
+  usdcBalance: bigint;    // USDC token balance
+}
+
 /*
  * Community Bounty Escrow Contract Interface
  * WHY: Type-safe interface for community bounty operations
@@ -1140,7 +1150,7 @@ export class BlockchainService {
         }
     }
 
-    async getWalletInfo(userId: string | number) {
+    async getWalletInfo(userId: string | number): Promise<WalletInfo> {
         try {
             log(`Fetching wallet info for user ${userId}`, "blockchain");
             const wallet = await storage.getWallet(userId.toString());
@@ -1175,17 +1185,29 @@ export class BlockchainService {
                 log(`Error getting token balance: ${tokenError}`, "blockchain");
             }
             
+            // Get USDC token balance if USDC token contract is configured
+            let usdcBalance = BigInt(0);
+            try {
+                if (this.usdcTokenContract) {
+                    usdcBalance = await this.getUsdcTokenBalance(wallet.address);
+                }
+            } catch (usdcError) {
+                log(`Error getting USDC token balance: ${usdcError}`, "blockchain");
+            }
+
             return {
                 address: wallet.address,
                 balance: balance,
-                tokenBalance: tokenBalance
+                tokenBalance: tokenBalance,
+                usdcBalance: usdcBalance
             };
         } catch (error: any) {
             log(`Failed to get wallet info: ${error.message}`, "blockchain");
             return {
                 address: "",
                 balance: BigInt(0),
-                tokenBalance: BigInt(0)
+                tokenBalance: BigInt(0),
+                usdcBalance: BigInt(0)
             };
         }
     }
@@ -1408,6 +1430,39 @@ export class BlockchainService {
             }
         } catch (error) {
             log(`Error in getTokenBalance: ${error}`, "blockchain");
+            return BigInt(0);
+        }
+    }
+
+    async getUsdcTokenBalance(address: string): Promise<bigint> {
+        try {
+            const ethAddress = address.replace('xdc', '0x');
+            log(`Getting USDC token balance for ${ethAddress}`, "blockchain");
+
+            if (!this.usdcTokenContract) {
+                log("USDC token contract not initialized", "blockchain");
+                return BigInt(0);
+            }
+
+            try {
+                const data = this.usdcTokenContract.interface.encodeFunctionData('balanceOf', [ethAddress]);
+                const result = await this.provider.call({
+                    to: this.usdcTokenContract.target as string,
+                    data
+                });
+
+                if (result && result !== '0x') {
+                    const decodedResult = this.usdcTokenContract.interface.decodeFunctionResult('balanceOf', result);
+                    return decodedResult[0];
+                }
+                log("Empty result from USDC token contract, returning 0", "blockchain");
+                return BigInt(0);
+            } catch (rpcError) {
+                log(`RPC error getting USDC token balance: ${rpcError}`, "blockchain");
+                return BigInt(0);
+            }
+        } catch (error) {
+            log(`Error in getUsdcTokenBalance: ${error}`, "blockchain");
             return BigInt(0);
         }
     }
