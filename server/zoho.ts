@@ -336,6 +336,16 @@ export async function hasUserOptedOut(email: string): Promise<boolean> {
  * any users who would receive the notification and haven't opted out.
  * For now, this checks the repository owner/creator who would typically be notified.
  *
+ * CRITICAL LIMITATION: This function currently only checks the repository owner's
+ * opt-out status. It does NOT check individual contributors' opt-out preferences,
+ * which means contributors who have opted out may still receive bounty notifications
+ * if the repository owner has not opted out.
+ *
+ * TODO: Implement comprehensive contributor opt-out checking by:
+ * 1. Querying all registered contributors to the repository
+ * 2. Filtering out those who have opted out of notifications
+ * 3. Only sending notifications to opted-in contributors
+ *
  * @param repoName Repository name to check for interested parties
  * @param bountyAmount Amount of the bounty (for logging purposes)
  * @returns boolean indicating if notifications can be sent
@@ -370,9 +380,9 @@ export async function canSendBountyNotification(repoName: string, bountyAmount: 
       return false;
     }
 
-    // Additional check: in a more comprehensive system, we could check if there are any known contributors
-    // to this repository who have NOT opted out, but for now checking the repository
-    // owner/creator is a good first step
+    // NOTE: Current limitation - does not check contributor opt-out preferences
+    // A more comprehensive implementation would check all contributors to this repository
+    // who have NOT opted out, but for now checking the repository owner/creator is a good first step
 
     return true; // Can send notification
   } catch (error) {

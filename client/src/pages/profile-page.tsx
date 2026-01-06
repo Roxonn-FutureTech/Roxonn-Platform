@@ -431,6 +431,8 @@ function EmailNotificationsToggle() {
       // Get CSRF token and verify it exists
       const csrfToken = getCookie('csrfToken') || getCookie('_csrf') || null;
 
+      // Check if CSRF token exists - different behavior for different endpoints
+      // For critical operations like account deletion, fail if token is missing
       if (!csrfToken) {
         throw new Error('CSRF token not found. Please refresh the page and try again.');
       }
@@ -462,13 +464,14 @@ function EmailNotificationsToggle() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update preferences';
       setError(errorMessage);
+      // Revert the toggle state immediately to avoid visual glitch
+      setOptOut(!newOptOut);
+      // Then show the error toast
       toast({
         title: 'Update Failed',
         description: errorMessage,
         variant: 'destructive',
       });
-      // Revert the toggle if it failed
-      setOptOut(!newOptOut);
     } finally {
       setLoading(false);
     }

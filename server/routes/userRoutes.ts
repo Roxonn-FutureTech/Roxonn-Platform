@@ -18,7 +18,12 @@ const deleteAccountLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     // Use user ID as the key for per-user rate limiting
-    return req.user?.id?.toString() || req.ip;
+    // If for any reason the user is not authenticated, throw an error
+    // since rate limiting is only needed for authenticated users
+    if (!req.user?.id) {
+      throw new Error('Rate limiter called for unauthenticated user');
+    }
+    return req.user.id.toString();
   },
   message: {
     error: 'Too many account deletion requests, please try again after an hour'
@@ -71,39 +76,42 @@ router.post('/delete-account', deleteAccountLimiter, requireAuth, csrfProtection
       }
 
       // After successful user deletion, clean up the session
-      // This ensures that even if session cleanup fails, the user account is definitely gone
+      // Note: We prioritize account deletion over session cleanup. Even if session cleanup fails,
+      // the account is permanently deleted and subsequent authentication attempts will fail.
+      // This approach prevents leaving users in a state where their account is deleted but
+      // they're still logged in with an active session.
       let logoutError: Error | null = null;
       await new Promise<void>((resolve) => {
         req.logout((err) => {
           if (err) {
             logoutError = err as Error;
             log(`Error logging out user after account deletion: ${err}`, 'session');
-            // Continue with session destruction even if logout fails
+            // Continue with session destruction even if logout fails - account deletion is prioritized
           }
           resolve();
         });
       });
 
-      // Then destroy the session
+      // Then destroy the session to completely log out the user
       let sessionDestroyError: Error | null = null;
       await new Promise<void>((resolve) => {
         req.session.destroy((err) => {
           if (err) {
             sessionDestroyError = err as Error;
             log(`Error destroying session after account deletion: ${err}`, 'session');
-            // Continue anyway despite session destruction error
+            // Continue anyway despite session destruction error - account deletion is prioritized
           }
           resolve();
         });
       });
 
-      // Log any session cleanup issues but continue
+      // Log any session cleanup issues but continue since account deletion succeeded
       if (logoutError && sessionDestroyError) {
-        log(`WARNING: Both logout and session destruction failed for user ${userId} after deletion.`, 'session');
+        log(`WARNING: Both logout and session destruction failed for user ${userId} after deletion. User may remain logged in until session expires.`, 'session');
       } else if (logoutError) {
-        log(`WARNING: Logout failed for user ${userId} after deletion.`, 'session');
+        log(`WARNING: Logout failed for user ${userId} after deletion. Session may remain active until expiration.`, 'session');
       } else if (sessionDestroyError) {
-        log(`WARNING: Session destruction failed for user ${userId} after deletion.`, 'session');
+        log(`WARNING: Session destruction failed for user ${userId} after deletion. User may remain logged in until session expires.`, 'session');
       }
 
       log(`User account deleted and session cleared successfully: ${userId}`, 'user-deletion');
