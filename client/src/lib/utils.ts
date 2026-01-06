@@ -1,3 +1,6 @@
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
 /**
  * Utility functions for various client-side operations
  */
@@ -45,7 +48,7 @@ export function formatNumber(num: number): string {
 
 /**
  * Truncate a string to a specified length with ellipsis
- * 
+ *
  * @param {string} str String to truncate
  * @param {number} maxLength Maximum length of the string
  * @returns {string} Truncated string with ellipsis if needed
@@ -53,4 +56,60 @@ export function formatNumber(num: number): string {
 export function truncateString(str: string, maxLength: number): string {
   if (str.length <= maxLength) return str;
   return str.slice(0, maxLength) + '...';
+}
+
+/**
+ * Combines tailwind classes using clsx and merges them with twMerge
+ * This prevents duplicate and conflicting classes
+ */
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+/**
+ * Decode a Base64 string to its original form
+ * Used for decrypting encrypted wallet data
+ *
+ * @param base64Str Base64 encoded string to decode
+ * @returns Decoded string
+ */
+export function decodeBase64(base64Str: string): string {
+  try {
+    // Add padding if needed
+    const paddedStr = base64Str.padEnd(
+      Math.ceil(base64Str.length / 4) * 4,
+      '='
+    );
+
+    // Decode base64 string to bytes, then convert to UTF-8 string
+    return atob(paddedStr);
+  } catch (error) {
+    console.error('Error decoding Base64 string:', error);
+    throw error;
+  }
+}
+
+/**
+ * Convert a Base64 encoded string to Uint8Array
+ * Used for cryptographic operations with encrypted wallet data
+ *
+ * @param base64Str Base64 encoded string to convert
+ * @returns Uint8Array representation of the Base64 string
+ */
+export function base64ToUint8Array(base64Str: string): Uint8Array {
+  try {
+    // Decode the base64 string to bytes
+    const decodedStr = atob(base64Str);
+
+    // Convert the string to a Uint8Array
+    const uint8Array = new Uint8Array(decodedStr.length);
+    for (let i = 0; i < decodedStr.length; i++) {
+      uint8Array[i] = decodedStr.charCodeAt(i);
+    }
+
+    return uint8Array;
+  } catch (error) {
+    console.error('Error converting Base64 string to Uint8Array:', error);
+    throw error;
+  }
 }

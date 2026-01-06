@@ -1767,51 +1767,93 @@ export class DatabaseStorage implements IStorage {
       // - communityBounties where creators and claimers are relevant
       // - registeredRepository.contributors array field if it exists
 
-      // As a placeholder implementation that at least has the structure in place:
       // Query bounty_attempts for users who have worked on issues in this repository
       // Note: This assumes there is a bounty_attempts table and contributorId field
       let contributorUsers: User[] = [];
 
-      // Check if there are any bounty attempts for this repository that we can look up
-      // The structure might vary depending on the actual schema in the codebase
-      // For now, we'll try to find users who have interacted with bounties in this repo
-
-      // Since I don't have the exact bounty attempts schema in this file,
-      // I'll query the database for users associated with issues from this repo
-      // using the bounty attempts table if it exists
       try {
+        // Extract owner and repo name from full repo name (format: owner/repo)
         const repoParts = repoFullName.split('/');
         const repoOwner = repoParts[0];
         const repoName = repoParts.slice(1).join('/'); // Handle repo names with multiple slashes
 
-        // Query for users who have made attempts on this repository's issues
-        const attempts = await db.execute(sql`
-          SELECT DISTINCT u.*
-          FROM bounty_attempts ba
-          JOIN users u ON ba."githubUsername" = u."githubUsername"
-          WHERE ba."githubRepoOwner" = ${repoOwner}
-            AND ba."githubRepoName" = ${repoName}
-        `);
+        if (repoOwner && repoName) {
+          // Query bounty_attempts table for contributors to this repository
+          // First try to query bounty attempts that match the repo
+          const attemptsResult = await db.execute(sql`
+            SELECT DISTINCT u.*
+            FROM bounty_attempts ba
+            JOIN users u ON ba."githubUsername" = u."githubUsername"
+            WHERE ba."githubRepoOwner" = ${repoOwner}
+              AND ba."githubRepoName" = ${repoName}
+          `);
 
-        if (attempts && Array.isArray(attempts.rows)) {
-          contributorUsers = attempts.rows as User[];
-        }
-      } catch (attemptsError) {
-        // If bounty_attempts table doesn't exist, continue with empty array
-        log(`No bounty_attempts table or error querying: ${attemptsError}`, 'storage');
-      }
-
-      // Also look in registered repository for contributors (if such field exists)
-      try {
-        // Query for users who registered this repository
-        if (registeredRepo.userId) {
-          const regUser = await this.getUserById(registeredRepo.userId);
-          if (regUser && !contributorUsers.find(u => u.id === regUser.id)) {
-            contributorUsers.push(regUser);
+          if (attemptsResult && Array.isArray(attemptsResult.rows)) {
+            contributorUsers = attemptsResult.rows as User[];
           }
         }
-      } catch (regError) {
-        log(`Error querying registered repository user: ${regError}`, 'storage');
+      } catch (attemptsError) {
+        // If bounty_attempts table doesn't exist or query fails,
+        // continue with empty contributor list - this is not a critical error
+        log(`No bounty_attempts table or error querying contributors for ${repoFullName}: ${attemptsError}`, 'storage');
+      }
+
+      // Also find users who have claimed community bounties in this repository
+      try {
+        const repoParts = repoFullName.split('/');
+        const repoOwner = repoParts[0];
+        const repoName = repoParts.slice(1).join('/');
+
+        if (repoOwner && repoName) {
+          const claimsResult = await db.execute(sql`
+            SELECT DISTINCT u.*
+            FROM community_bounties cb
+            JOIN users u ON cb."claimedByGithubUsername" = u."githubUsername"
+            WHERE cb."githubRepoOwner" = ${repoOwner}
+              AND cb."githubRepoName" = ${repoName}
+              AND cb."claimedByGithubUsername" IS NOT NULL
+          `);
+
+          if (claimsResult && Array.isArray(claimsResult.rows)) {
+            // Add unique contributors from claims to the list
+            for (const claimUser of claimsResult.rows as User[]) {
+              if (!contributorUsers.find(u => u.id === claimUser.id)) {
+                contributorUsers.push(claimUser);
+              }
+            }
+          }
+        }
+      } catch (claimsError) {
+        // If community_bounties table doesn't exist or query fails,
+        // continue with existing contributor list
+        log(`Error querying claimers for contributors to ${repoFullName}: ${claimsError}`, 'storage');
+      }
+
+      // Also include repository collaborators if available in registered repositories
+      try {
+        const repoRecord = await db.query.registeredRepositories.findFirst({
+          where: eq(registeredRepositories.githubRepoFullName, repoFullName)
+        });
+
+        if (repoRecord?.userId) {
+          // Get the user who registered this repository
+          const registrationUser = await this.getUserById(repoRecord.userId);
+          if (registrationUser && !contributorUsers.find(u => u.id === registrationUser.id)) {
+            contributorUsers.push(registrationUser);
+          }
+        } else if (repoRecord?.poolManagers && Array.isArray(repoRecord.poolManagers)) {
+          // If there are pool managers for this repository, add them
+          for (const managerAddress of repoRecord.poolManagers) {
+            const managerUser = await db.query.users.findFirst({
+              where: eq(users.xdcWalletAddress, managerAddress)
+            });
+            if (managerUser && !contributorUsers.find(u => u.id === managerUser.id)) {
+              contributorUsers.push(managerUser);
+            }
+          }
+        }
+      } catch (repoError) {
+        log(`Error querying registered repository for ${repoFullName}: ${repoError}`, 'storage');
       }
 
       log(`Found ${contributorUsers.length} bounty contributors for repository: ${repoFullName}`, 'storage');
