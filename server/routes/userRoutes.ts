@@ -57,15 +57,17 @@ router.post('/delete-account', deleteAccountLimiter, requireAuth, csrfProtection
     }
 
     // Verify that the provided username matches the current user's username
-    if (confirmUsername.toLowerCase() !== currentUser.username.toLowerCase()) {
+    if (!currentUser.username || confirmUsername.toLowerCase() !== currentUser.username.toLowerCase()) {
       return res.status(400).json({ error: 'Username confirmation does not match' });
     }
 
     // Clear the user's session FIRST before deleting the user data
     // This ensures the user is properly logged out before their account is removed
-    await new Promise<void>((resolve, reject) => {
+    let logoutError: Error | null = null;
+    await new Promise<void>((resolve) => {
       req.logout((err) => {
         if (err) {
+          logoutError = err as Error;
           log(`Error logging out user before account deletion: ${err}`, 'session');
           // Continue anyway despite logout error
         }
@@ -74,15 +76,26 @@ router.post('/delete-account', deleteAccountLimiter, requireAuth, csrfProtection
     });
 
     // Then destroy the session
-    await new Promise<void>((resolve, reject) => {
+    let sessionDestroyError: Error | null = null;
+    await new Promise<void>((resolve) => {
       req.session.destroy((err) => {
         if (err) {
+          sessionDestroyError = err as Error;
           log(`Error destroying session before account deletion: ${err}`, 'session');
           // Continue anyway despite session destruction error
         }
         resolve();
       });
     });
+
+    // If both operations failed severely, we should warn but still proceed with deletion
+    if (logoutError && sessionDestroyError) {
+      log(`WARNING: Both logout and session destruction failed for user ${userId}. User may remain logged in.`, 'session');
+    } else if (logoutError) {
+      log(`WARNING: Logout failed for user ${userId}, session was destroyed. May cause inconsistent login state.`, 'session');
+    } else if (sessionDestroyError) {
+      log(`WARNING: Session destruction failed for user ${userId}, user was logged out. May cause inconsistent session state.`, 'session');
+    }
 
     // Finally, delete the user account (this will cascade delete related data)
     // Will throw an error if user has wallet assets (prevents accidental fund loss)
