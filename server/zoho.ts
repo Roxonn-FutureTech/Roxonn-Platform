@@ -356,12 +356,21 @@ export async function canSendBountyNotification(repoName: string, bountyAmount: 
 
     // Find the user by GitHub username
     const user = await storage.getUserByGithubUsername(repoOwner);
-    if (user && user.emailOptOut === true) {
+
+    // If user doesn't exist in our system, we can't check their opt-out preference,
+    // so we assume they haven't opted out of bounty notifications for their repositories
+    if (!user) {
+      log(`Repository owner ${repoOwner} not found in system, assuming no opt-out preference for bounty notifications`, 'zoho');
+      return true;
+    }
+
+    // If user exists and has opted out, skip the bounty notification
+    if (user.emailOptOut === true) {
       log(`Repository owner ${repoOwner} has opted out. Skipping bounty notification for ${bountyAmount} bounty.`, 'zoho');
       return false;
     }
 
-    // Additional check: we could also check if there are any known contributors
+    // Additional check: in a more comprehensive system, we could check if there are any known contributors
     // to this repository who have NOT opted out, but for now checking the repository
     // owner/creator is a good first step
 

@@ -61,49 +61,49 @@ router.post('/delete-account', deleteAccountLimiter, requireAuth, csrfProtection
       return res.status(400).json({ error: 'Username confirmation does not match' });
     }
 
-    // Clear the user's session FIRST before deleting the user data
-    // This ensures the user is properly logged out before their account is removed
-    let logoutError: Error | null = null;
-    await new Promise<void>((resolve) => {
-      req.logout((err) => {
-        if (err) {
-          logoutError = err as Error;
-          log(`Error logging out user before account deletion: ${err}`, 'session');
-          // Continue anyway despite logout error
-        }
-        resolve();
-      });
-    });
-
-    // Then destroy the session
-    let sessionDestroyError: Error | null = null;
-    await new Promise<void>((resolve) => {
-      req.session.destroy((err) => {
-        if (err) {
-          sessionDestroyError = err as Error;
-          log(`Error destroying session before account deletion: ${err}`, 'session');
-          // Continue anyway despite session destruction error
-        }
-        resolve();
-      });
-    });
-
-    // If both operations failed severely, we should warn but still proceed with deletion
-    if (logoutError && sessionDestroyError) {
-      log(`WARNING: Both logout and session destruction failed for user ${userId}. User may remain logged in.`, 'session');
-    } else if (logoutError) {
-      log(`WARNING: Logout failed for user ${userId}, session was destroyed. May cause inconsistent login state.`, 'session');
-    } else if (sessionDestroyError) {
-      log(`WARNING: Session destruction failed for user ${userId}, user was logged out. May cause inconsistent session state.`, 'session');
-    }
-
-    // Finally, delete the user account (this will cascade delete related data)
+    // First, delete the user account (this will cascade delete related data)
     // Will throw an error if user has wallet assets (prevents accidental fund loss)
     try {
       const success = await storage.deleteUser(userId);
 
       if (!success) {
         return res.status(404).json({ error: 'User not found' });
+      }
+
+      // After successful user deletion, clean up the session
+      // This ensures that even if session cleanup fails, the user account is definitely gone
+      let logoutError: Error | null = null;
+      await new Promise<void>((resolve) => {
+        req.logout((err) => {
+          if (err) {
+            logoutError = err as Error;
+            log(`Error logging out user after account deletion: ${err}`, 'session');
+            // Continue with session destruction even if logout fails
+          }
+          resolve();
+        });
+      });
+
+      // Then destroy the session
+      let sessionDestroyError: Error | null = null;
+      await new Promise<void>((resolve) => {
+        req.session.destroy((err) => {
+          if (err) {
+            sessionDestroyError = err as Error;
+            log(`Error destroying session after account deletion: ${err}`, 'session');
+            // Continue anyway despite session destruction error
+          }
+          resolve();
+        });
+      });
+
+      // Log any session cleanup issues but continue
+      if (logoutError && sessionDestroyError) {
+        log(`WARNING: Both logout and session destruction failed for user ${userId} after deletion.`, 'session');
+      } else if (logoutError) {
+        log(`WARNING: Logout failed for user ${userId} after deletion.`, 'session');
+      } else if (sessionDestroyError) {
+        log(`WARNING: Session destruction failed for user ${userId} after deletion.`, 'session');
       }
 
       log(`User account deleted and session cleared successfully: ${userId}`, 'user-deletion');

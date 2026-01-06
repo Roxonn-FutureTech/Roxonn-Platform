@@ -1695,7 +1695,26 @@ export class DatabaseStorage implements IStorage {
 
       log(`Deleting user account: ${userId}`, 'storage');
 
-      // Delete the user record (cascade will handle most related records)
+      // Double-check wallet balances one final time before deletion to prevent TOCTOU
+      // Time-of-check to time-of-use race condition where user might have received funds
+      // after initial check but before the account deletion
+      if (user.xdcWalletAddress) {
+        const finalWalletInfo = await blockchain.getWalletInfo(userId);
+
+        const finalHasXdcBalance = finalWalletInfo.balance && finalWalletInfo.balance > BigInt(0);
+        const finalHasTokenBalance = finalWalletInfo.tokenBalance && finalWalletInfo.tokenBalance > BigInt(0);
+        const finalHasUsdcBalance = finalWalletInfo.usdcBalance && finalWalletInfo.usdcBalance > BigInt(0);
+
+        if (finalHasXdcBalance || finalHasTokenBalance || finalHasUsdcBalance) {
+          log(`Race condition detected: User ${userId} has received funds after initial check. Preventing deletion. XDC: ${finalWalletInfo.balance}, Token: ${finalWalletInfo.tokenBalance}, USDC: ${finalWalletInfo.usdcBalance || '0'}`, 'storage');
+
+          throw new Error(
+            `Cannot delete account: Wallet has funds received after initial check. Please transfer funds before account deletion.`
+          );
+        }
+      }
+
+      // Proceed with deletion since we've confirmed balances are still zero
       const deletedUsers = await db.delete(users)
         .where(eq(users.id, userId))
         .returning({ id: users.id });

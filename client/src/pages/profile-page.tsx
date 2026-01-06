@@ -428,7 +428,12 @@ function EmailNotificationsToggle() {
         if (parts.length === 2) return parts.pop()?.split(';').shift();
       };
 
-      const csrfToken = getCookie('csrfToken') || getCookie('_csrf') || '';
+      // Get CSRF token and verify it exists
+      const csrfToken = getCookie('csrfToken') || getCookie('_csrf') || null;
+
+      if (!csrfToken) {
+        throw new Error('CSRF token not found. Please refresh the page and try again.');
+      }
 
       const response = await fetch('/api/user/email-preferences', {
         method: 'PATCH',
@@ -509,6 +514,9 @@ function EmailNotificationsToggle() {
   );
 }
 
+// Constant for redirect countdown duration (in seconds)
+const REDIRECT_COUNTDOWN_SECONDS = 2;
+
 // Delete Account Button Component
 function DeleteAccountButton() {
   const { user } = useAuth();
@@ -536,7 +544,12 @@ function DeleteAccountButton() {
         if (parts.length === 2) return parts.pop()?.split(';').shift();
       };
 
-      const csrfToken = getCookie('csrfToken') || getCookie('_csrf') || '';
+      // Get CSRF token and verify it exists
+      const csrfToken = getCookie('csrfToken') || getCookie('_csrf') || null;
+
+      if (!csrfToken) {
+        throw new Error('CSRF token not found. Please refresh the page and try again.');
+      }
 
       const response = await fetch('/api/user/delete-account', {
         method: 'POST',
@@ -564,7 +577,7 @@ function DeleteAccountButton() {
   };
 
   // Include redirect countdown in success state - must be at top level
-  const [countdown, setCountdown] = React.useState(2);
+  const [countdown, setCountdown] = React.useState(REDIRECT_COUNTDOWN_SECONDS);
 
   React.useEffect(() => {
     if (success && countdown > 0) {
