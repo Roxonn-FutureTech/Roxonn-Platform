@@ -61,6 +61,7 @@ export interface IStorage {
   updateRepositoryActiveStatus(githubRepoId: string, isActive: boolean): Promise<boolean>;
   getUserByGithubEmail(email: string): Promise<User | null>;
   getUserByGithubUsername(username: string): Promise<User | null>;
+  deleteUser(userId: number): Promise<boolean>;
 }
 
 // Define PromptTransactionType enum locally if not imported from a shared types file
@@ -1639,9 +1640,24 @@ export class DatabaseStorage implements IStorage {
   /**
    * Delete user account and all associated data
    * This is a hard delete that removes the user and all related records
-   * Cascade deletes handle most related tables automatically
    *
-   * Before deletion, check that user has no wallet assets to prevent loss of funds
+   * CASCADE DELETE RELATIONSHIPS:
+   * - registered_repositories: userId -> users.id (CASCADE)
+   * - onramp_transactions: userId -> users.id (CASCADE)
+   * - prompt_transactions: userId -> users.id (CASCADE)
+   * - social_verifications: userId -> users.id (CASCADE)
+   * - subscriptions: userId -> users.id (CASCADE)
+   * - subscription_events: subscriptionId -> subscriptions.id -> users.id (CASCADE)
+   * - referral_codes: userId -> users.id (CASCADE)
+   * - referrals: referrer_id/referred_id -> users.id (CASCADE)
+   * - referral_rewards: userId -> users.id (CASCADE)
+   * - payout_requests: userId -> users.id (CASCADE)
+   * - promotional_bounties: creatorId -> users.id (CASCADE)
+   * - promotional_submissions: contributorId -> users.id (CASCADE)
+   * - bounty_requests: requestedBy -> users.id (REFERENCES user.githubUsername, not direct FK)
+   *
+   * @param userId The ID of the user to delete
+   * @returns boolean indicating success
    */
   async deleteUser(userId: number): Promise<boolean> {
     try {

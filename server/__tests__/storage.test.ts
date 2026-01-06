@@ -1,13 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { storage } from '../../storage';
-import { db } from '../../db';
-import { blockchain } from '../../blockchain';
+import { storage } from '../storage';
+import { db } from '../db';
+import { blockchain } from '../blockchain';
 import { users } from '../../../shared/schema';
 
 // Mock external dependencies
-vi.mock('../../db');
-vi.mock('../../blockchain');
+vi.mock('../db');
+vi.mock('../blockchain');
 
 describe('Storage Tests', () => {
   beforeEach(() => {

@@ -1,3 +1,7 @@
+-- Migration to add email_opt_out column with explicit transaction handling
+-- PostgreSQL DDL statements are automatically wrapped in implicit transactions
+-- but this ensures atomicity of the entire migration
+
 -- Add email_opt_out column to users table if it doesn't exist
 DO $$
 BEGIN

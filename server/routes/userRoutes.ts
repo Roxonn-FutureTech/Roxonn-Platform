@@ -25,10 +25,10 @@ const deleteAccountLimiter = rateLimit({
   }
 });
 
-// Rate limiter for email preferences updates (10 requests per hour per user in production, 50 in development)
+// Rate limiter for email preferences updates (30 requests per hour per user in production, 60 in development)
 const emailPreferencesLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: process.env.NODE_ENV === 'production' ? 10 : 50, // Limit to 10 email preference changes per hour in prod, 50 in dev
+  max: process.env.NODE_ENV === 'production' ? 30 : 60, // Limit to 30 email preference changes per hour in prod, 60 in dev
   standardHeaders: true,
   legacyHeaders: false,
   message: {

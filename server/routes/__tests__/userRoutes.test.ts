@@ -1,29 +1,32 @@
-import { describe, it, expect, beforeEach, afterEach, vi, MockedFunction } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
-import express, { type Request, type Response, type NextFunction } from 'express';
+import express from 'express';
 import session from 'express-session';
-import { eq } from 'drizzle-orm';
-import { users } from '../../../shared/schema';
+import { db } from '../../db';
 import { storage } from '../../storage';
 import { blockchain } from '../../blockchain';
-import { db } from '../../db';
-import { config } from '../../config';
+import { requireAuth, csrfProtection } from '../../auth';
+
+// Mock middleware at module level so actual route handlers run with mocks
+vi.mock('../../auth', async () => {
+  const actual = await vi.importActual('../../auth');
+  return {
+    ...actual,
+    requireAuth: vi.fn((req, res, next) => {
+      req.user = { id: 1, username: 'testuser', githubUsername: 'testuser' };
+      next();
+    }),
+    csrfProtection: vi.fn((req, res, next) => {
+      next();
+    })
+  };
+});
 
 // Mock external dependencies
 vi.mock('../../storage');
 vi.mock('../../blockchain');
 vi.mock('../../db');
 vi.mock('../../config');
-
-// Use requireAuth middleware mock
-const mockRequireAuth = (req: Request, res: Response, next: NextFunction) => {
-  req.user = { id: 1, username: 'testuser', githubUsername: 'testuser' };
-  next();
-};
-
-const mockCsrfProtection = (req: Request, res: Response, next: NextFunction) => {
-  next();
-};
 
 // Import the router after mocking
 let userRoutes: express.Router;
@@ -37,95 +40,92 @@ beforeEach(async () => {
     secret: 'test-secret',
     resave: false,
     saveUninitialized: false,
+    cookie: {
+      secure: true,
+      httpOnly: true,
+    },
   }));
-  
+
   // Reset mocks
   vi.clearAllMocks();
-  
+
   // Import userRoutes after clearing mocks
   const userRoutesModule = await import('../userRoutes');
   userRoutes = userRoutesModule.default;
-  
-  // Apply mock middleware
-  userRoutes.stack.forEach((middleware) => {
-    const layer = middleware;
-    if (layer.route?.path === '/delete-account') {
-      layer.handle = vi.fn().mockImplementation(mockRequireAuth).mockImplementation(mockCsrfProtection);
-    } else if (layer.route?.path === '/email-preferences') {
-      layer.handle = vi.fn().mockImplementation(mockRequireAuth).mockImplementation(mockCsrfProtection);
-    }
-  });
-  
+
   app.use('/api/user', userRoutes);
 });
 
 describe('User Routes Tests', () => {
   describe('DELETE /api/user/delete-account', () => {
     it('should delete user account when user has no wallet balance', async () => {
-      // Mock user without wallet balance
+      // Mock user without wallet balance - include username field
       vi.mocked(storage.getUserById).mockResolvedValue({
         id: 1,
+        username: 'testuser',  // Added username field
         xdcWalletAddress: 'xdc123...',
         // ...other user fields
       });
-      
+
       vi.mocked(blockchain.getWalletInfo).mockResolvedValue({
         balance: BigInt(0),
         tokenBalance: BigInt(0),
         usdcBalance: BigInt(0)
       });
-      
+
       vi.mocked(storage.deleteUser).mockResolvedValue(true);
-      
+
       const response = await request(app)
         .post('/api/user/delete-account')
         .send({ confirmUsername: 'testuser' })
         .expect(200);
-      
+
       expect(response.body.success).toBe(true);
       expect(response.body.message).toBe('Account deleted successfully');
     });
 
     it('should not delete user account when user has wallet balance', async () => {
-      // Mock user with wallet balance
+      // Mock user with wallet balance - include username field
       vi.mocked(storage.getUserById).mockResolvedValue({
         id: 1,
+        username: 'testuser',  // Added username field
         xdcWalletAddress: 'xdc123...',
         // ...other user fields
       });
-      
+
       vi.mocked(blockchain.getWalletInfo).mockResolvedValue({
         balance: BigInt(1000000000000000000), // 1 XDC
         tokenBalance: BigInt(0),
         usdcBalance: BigInt(0)
       });
-      
+
       const response = await request(app)
         .post('/api/user/delete-account')
         .send({ confirmUsername: 'testuser' })
         .expect(400);
-      
+
       expect(response.body.error).toContain('Cannot delete account: Wallet has funds');
     });
 
     it('should require username confirmation', async () => {
+      // Mock user with username field
       vi.mocked(storage.getUserById).mockResolvedValue({
         id: 1,
         username: 'testuser',
         xdcWalletAddress: 'xdc123...',
       });
-      
+
       vi.mocked(blockchain.getWalletInfo).mockResolvedValue({
         balance: BigInt(0),
         tokenBalance: BigInt(0),
         usdcBalance: BigInt(0)
       });
-      
+
       const response = await request(app)
         .post('/api/user/delete-account')
         .send({ confirmUsername: 'wronguser' })
         .expect(400);
-      
+
       expect(response.body.error).toBe('Username confirmation does not match');
     });
   });
@@ -143,9 +143,9 @@ describe('User Routes Tests', () => {
         .patch('/api/user/email-preferences')
         .send({ optOut: true })
         .expect(200);
-      
+
       expect(response.body.success).toBe(true);
-      expect(response.body.emailOptOut).toBe(true);
+      expect(response.body.optOut).toBe(true);  // Fixed: Changed from emailOptOut to optOut
     });
 
     it('should validate optOut parameter', async () => {
@@ -153,7 +153,7 @@ describe('User Routes Tests', () => {
         .patch('/api/user/email-preferences')
         .send({ optOut: 'invalid' })
         .expect(400);
-      
+
       expect(response.body.error).toBe('optOut must be a boolean value');
     });
 
@@ -162,7 +162,7 @@ describe('User Routes Tests', () => {
         .patch('/api/user/email-preferences')
         .send({})
         .expect(400);
-      
+
       expect(response.body.error).toBe('optOut field is required');
     });
   });

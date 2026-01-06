@@ -421,10 +421,20 @@ function EmailNotificationsToggle() {
       setLoading(true);
       setError(null);
 
+      // Retrieve CSRF token from cookie (standard in this application)
+      const getCookie = (name: string) => {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop()?.split(';').shift();
+      };
+
+      const csrfToken = getCookie('csrfToken') || getCookie('_csrf') || '';
+
       const response = await fetch('/api/user/email-preferences', {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
         },
         credentials: 'include',
         body: JSON.stringify({ optOut: newOptOut })
@@ -518,10 +528,15 @@ function DeleteAccountButton() {
       setLoading(true);
       setError(null);
 
-      // Get CSRF token from meta tag or wherever it's stored in your app
-      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
-                       document.querySelector('meta[name="xsrf-token"]')?.getAttribute('content') ||
-                       '';
+      // Retrieve CSRF token from cookie (standard in this application)
+      // Get the CSRF token from the cookie
+      const getCookie = (name: string) => {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop()?.split(';').shift();
+      };
+
+      const csrfToken = getCookie('csrfToken') || getCookie('_csrf') || '';
 
       const response = await fetch('/api/user/delete-account', {
         method: 'POST',
@@ -539,10 +554,8 @@ function DeleteAccountButton() {
       }
 
       setSuccess(true);
-      // After successful deletion, user will be logged out automatically
-      setTimeout(() => {
-        window.location.href = '/auth';
-      }, 2000);
+      // Success state triggers useEffect to handle redirect after countdown
+      // Redirect handled by useEffect in success state (line ~571-576)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete account');
     } finally {
