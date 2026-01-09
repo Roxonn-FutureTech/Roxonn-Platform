@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { STAGING_API_URL } from "@/config";
 import { ethers } from "ethers";
+import { ShareAchievementModal, useShareAchievement } from "@/components/share-achievement-modal";
 import {
   Wallet,
   TrendingUp,
@@ -24,6 +25,7 @@ import {
   Crown,
   Gift,
   ChevronRight,
+  Share2,
 } from "lucide-react";
 
 // Animation variants
@@ -119,6 +121,8 @@ function ActivityItem({
   currency,
   txHash,
   repoName,
+  issueId,
+  onShare,
 }: {
   type: "reward" | "contribution" | "subscription" | "referral";
   title: string;
@@ -128,6 +132,8 @@ function ActivityItem({
   currency?: string;
   txHash?: string;
   repoName?: string;
+  issueId?: number;
+  onShare?: () => void;
 }) {
   const icons = {
     reward: <Coins className="w-4 h-4 text-emerald-500" />,
@@ -167,10 +173,27 @@ function ActivityItem({
           )}
         </div>
         <p className="text-sm text-muted-foreground truncate">{description}</p>
-        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-          <Clock className="w-3 h-3" />
-          {time}
-        </p>
+        <div className="flex items-center justify-between mt-1">
+          <p className="text-xs text-muted-foreground flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            {time}
+          </p>
+          {/* Share button for reward type activities */}
+          {type === "reward" && amount && onShare && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs gap-1 opacity-0 group-hover:opacity-100 transition-opacity text-violet-500 hover:text-violet-400 hover:bg-violet-500/10"
+              onClick={(e) => {
+                e.stopPropagation();
+                onShare();
+              }}
+            >
+              <Share2 className="w-3 h-3" />
+              Share
+            </Button>
+          )}
+        </div>
       </div>
       {link ? (
         <a href={link} target="_blank" rel="noopener noreferrer">
@@ -220,6 +243,8 @@ function QuickAction({
 export default function DashboardPage() {
   const { user } = useAuth();
   const { data: walletInfo, isLoading: walletLoading, refetch: refetchWallet } = useWallet();
+  
+  const { isOpen: isShareModalOpen, achievementData, openShareModal, closeShareModal } = useShareAchievement();
 
   // Fetch subscription status
   const { data: subscriptionStatus } = useQuery({
@@ -297,10 +322,35 @@ export default function DashboardPage() {
     currency: activity.metadata?.currency,
     txHash: activity.metadata?.txHash,
     repoName: activity.metadata?.repoName,
+    issueId: activity.metadata?.issueId,
   })) || [];
+
+  interface ActivityData {
+    amount?: string;
+    currency?: 'XDC' | 'ROXN' | 'USDC';
+    repoName?: string;
+    issueId?: number;
+    txHash?: string;
+  }
+
+  const handleShareActivity = (activity: ActivityData) => {
+    openShareModal({
+      amount: activity.amount || '0',
+      currency: (activity.currency || 'ROXN') as 'XDC' | 'ROXN' | 'USDC',
+      projectName: activity.repoName,
+      issueNumber: activity.issueId,
+      transactionHash: activity.txHash,
+    });
+  };
 
   return (
     <div className="min-h-screen bg-background noise-bg">
+      {/* Share Achievement Modal */}
+      <ShareAchievementModal 
+        isOpen={isShareModalOpen}
+        onClose={closeShareModal}
+        achievementData={achievementData}
+      />
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
         {/* Header */}
         <motion.div
@@ -416,7 +466,11 @@ export default function DashboardPage() {
                 </>
               ) : recentActivity.length > 0 ? (
                 recentActivity.map((activity: any, index: number) => (
-                  <ActivityItem key={activity.id || index} {...activity} />
+                  <ActivityItem 
+                    key={activity.id || index} 
+                    {...activity}
+                    onShare={() => handleShareActivity(activity)}
+                  />
                 ))
               ) : (
                 <div className="text-center py-12 text-muted-foreground">
