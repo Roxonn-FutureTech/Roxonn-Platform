@@ -14,13 +14,14 @@
 
 Roxonn is a **decentralized platform that automatically pays developers in cryptocurrency** when their GitHub pull requests get merged. No invoices, no payment processors, no waiting - just code and compensation working in harmony.
 
-### For Developers
+### For Developers (Contributors)
 - Browse repositories funded with crypto bounties
 - Submit quality pull requests
 - **Get paid automatically** when your PR is merged
 - Supports **XDC, ROXN tokens, and USDC**
+- Signal intent with `/attempt` command
 
-### For Project Maintainers (Pool Managers)
+### For Project Maintainers (Pool Managers / Clients)
 - Fund your repository with cryptocurrency
 - Attract quality contributors instantly
 - **Automatic reward distribution** via smart contracts
