@@ -1,7 +1,7 @@
 # Roxonn GitHub Bot - Command Reference
 
-**Last Updated:** 2025-12-28
-**Version:** 1.0.0
+**Last Updated:** 2025-01-14
+**Version:** 1.1.0
 
 > **Quick Links:**
 > [Pool Bounties](#pool-bounties) | [Community Bounties](#community-bounties) | [Status Commands](#status-commands) | [Troubleshooting](#troubleshooting)
