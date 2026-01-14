@@ -1,4 +1,4 @@
-import { pgTable, text, serial, boolean, timestamp, jsonb, integer, decimal } from "drizzle-orm/pg-core"; // Added integer, decimal
+import { pgTable, text, serial, boolean, timestamp, jsonb, integer, decimal } from "drizzle-orm/pg-core"; // Added integer, decimal for community bounties
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
