@@ -1,3 +1,4 @@
+// Client/Pool Manager Onboarding Tutorial Component
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
