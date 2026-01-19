@@ -13,9 +13,9 @@ vi.mock('../server/db', () => ({
 vi.mock('../server/config', () => ({
   config: {
     databaseUrl: 'postgres://mock:mock@localhost:5432/mock',
-    githubAppId: 'mock-id',
-    githubAppPrivateKey: 'mock-key',
-    githubAppWebhookSecret: 'mock-secret',
+    githubAppId: process.env.GITHUB_APP_ID || 'mock-id',
+    githubAppPrivateKey: process.env.GITHUB_APP_PRIVATE_KEY || 'mock-key',
+    githubAppWebhookSecret: process.env.GITHUB_APP_WEBHOOK_SECRET || 'mock-secret',
     xdcNodeUrl: 'https://rpc.mock.com',
     feeCollectorAddress: 'xdc000',
     platformFeeRate: 250,
@@ -23,7 +23,7 @@ vi.mock('../server/config', () => ({
     repoRewardsContractAddress: 'xdc111',
     forwarderContractAddress: 'xdc222',
     roxnTokenAddress: 'xdc333',
-    relayerPrivateKey: '0xabc',
+    relayerPrivateKey: process.env.RELAYER_PRIVATE_KEY || '0xabc',
     communityBountyEscrowAddress: 'xdc444'
   }
 }));
