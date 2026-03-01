@@ -285,6 +285,7 @@ Coverage reports are available in the `coverage/` directory after running tests.
 
 ## Contributing
 Contributions are welcome! Please read our contributing guidelines for details.
+Check out our [Developer Flight Manual](ROXONN_ONBOARDING.md) to get started in 15 minutes.
 
 ## License
 This project is licensed under the MIT License.
