@@ -207,7 +207,7 @@ export function PaymentVerificationModal({ onSuccess, trigger }: PaymentVerifica
                 </Button>
                 <Button
                   onClick={() => handleConfirmation(true)}
-                  disabled={loading || (!orderId && !txHash)}
+                  disabled={loading || !orderId}
                 >
                   {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   Confirm & Activate
