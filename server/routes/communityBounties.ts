@@ -512,7 +512,13 @@ router.get('/api/community-bounties', async (req: Request, res: Response) => {
       offset: offsetNum,
     });
 
-    const total = filteredBounties.length;
+    const total = await storage.countActiveCommunityBounties({
+      status: filters.status,
+      currency: filters.currency,
+      githubRepoOwner: filters.githubRepoOwner,
+      githubRepoName: filters.githubRepoName,
+      createdByGithubUsername: filters.createdByGithubUsername,
+    });
 
     res.status(200).json({
       bounties: filteredBounties,
@@ -583,8 +589,6 @@ router.get('/api/community-bounties/leaderboard', async (req: Request, res: Resp
 
     const completed = await storage.getActiveCommunityBounties({
       status: 'completed',
-      limit: limit,
-      offset: 0,
     });
 
     // Aggregate by contributor

@@ -952,6 +952,34 @@ export class DatabaseStorage implements IStorage {
    * WHY: Main bounty discovery interface, paginated for performance
    * WHY only 'funded' status: These are actively claimable bounties
    */
+  private buildCommunityBountyFilterConditions(filters?: {
+    status?: string;
+    currency?: string;
+    githubRepoOwner?: string;
+    githubRepoName?: string;
+    createdByGithubUsername?: string;
+  }) {
+    const conditions = [];
+
+    if (filters?.status) {
+      conditions.push(eq(communityBounties.status, filters.status as any));
+    }
+    if (filters?.currency) {
+      conditions.push(eq(communityBounties.currency, filters.currency as any));
+    }
+    if (filters?.githubRepoOwner) {
+      conditions.push(eq(communityBounties.githubRepoOwner, filters.githubRepoOwner));
+    }
+    if (filters?.githubRepoName) {
+      conditions.push(eq(communityBounties.githubRepoName, filters.githubRepoName));
+    }
+    if (filters?.createdByGithubUsername) {
+      conditions.push(eq(communityBounties.createdByGithubUsername, filters.createdByGithubUsername));
+    }
+
+    return conditions;
+  }
+
   async getActiveCommunityBounties(filters?: {
     status?: string;
     currency?: string;
@@ -962,37 +990,46 @@ export class DatabaseStorage implements IStorage {
     offset?: number;
   }): Promise<any[]> {
     try {
-      const conditions = [];
-      const limit = filters?.limit ?? 50;
-      const offset = filters?.offset ?? 0;
+      const conditions = this.buildCommunityBountyFilterConditions(filters);
 
-      if (filters?.status) {
-        conditions.push(eq(communityBounties.status, filters.status as any));
-      }
-      if (filters?.currency) {
-        conditions.push(eq(communityBounties.currency, filters.currency as any));
-      }
-      if (filters?.githubRepoOwner) {
-        conditions.push(eq(communityBounties.githubRepoOwner, filters.githubRepoOwner));
-      }
-      if (filters?.githubRepoName) {
-        conditions.push(eq(communityBounties.githubRepoName, filters.githubRepoName));
-      }
-      if (filters?.createdByGithubUsername) {
-        conditions.push(eq(communityBounties.createdByGithubUsername, filters.createdByGithubUsername));
-      }
-
-      const bounties = await db.select()
+      let query = db.select()
         .from(communityBounties)
         .where(conditions.length > 0 ? and(...conditions) : undefined)
-        .orderBy(desc(communityBounties.createdAt))
-        .limit(limit)
-        .offset(offset);
+        .orderBy(desc(communityBounties.createdAt));
+
+      if (filters?.limit !== undefined) {
+        query = query.limit(filters.limit);
+      }
+      if (filters?.offset !== undefined) {
+        query = query.offset(filters.offset);
+      }
+
+      const bounties = await query;
 
       return bounties;
     } catch (error) {
       log(`Error fetching active community bounties: ${error instanceof Error ? error.message : String(error)}`, 'storage');
       return [];
+    }
+  }
+
+  async countActiveCommunityBounties(filters?: {
+    status?: string;
+    currency?: string;
+    githubRepoOwner?: string;
+    githubRepoName?: string;
+    createdByGithubUsername?: string;
+  }): Promise<number> {
+    try {
+      const conditions = this.buildCommunityBountyFilterConditions(filters);
+      const [result] = await db.select({ count: sql<number>`count(*)` })
+        .from(communityBounties)
+        .where(conditions.length > 0 ? and(...conditions) : undefined);
+
+      return Number(result?.count ?? 0);
+    } catch (error) {
+      log(`Error counting active community bounties: ${error instanceof Error ? error.message : String(error)}`, 'storage');
+      return 0;
     }
   }
 
