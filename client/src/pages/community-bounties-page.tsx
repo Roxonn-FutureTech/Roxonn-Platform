@@ -63,6 +63,8 @@ export default function CommunityBountiesPage() {
   const [currencyFilter, setCurrencyFilter] = useState<string>("all"); // Show all currencies by default
   const [selectedBounty, setSelectedBounty] = useState<CommunityBounty | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showClaimDialog, setShowClaimDialog] = useState(false);
+  const [claimPrNumber, setClaimPrNumber] = useState("");
 
   // Create bounty form state
   const [formData, setFormData] = useState({
@@ -73,7 +75,7 @@ export default function CommunityBountiesPage() {
     currency: "USDC" as "XDC" | "ROXN" | "USDC",
   });
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["community-bounties", statusFilter, currencyFilter],
     queryFn: () =>
       communityBountiesAPI.getAll({
@@ -185,6 +187,34 @@ export default function CommunityBountiesPage() {
     },
   });
 
+  const claimBountyMutation = useMutation({
+    mutationFn: async ({ bountyId, prNumber }: { bountyId: number; prNumber: number }) => {
+      if (!selectedBounty) {
+        throw new Error("No bounty selected");
+      }
+
+      const prUrl = `https://github.com/${selectedBounty.githubRepoOwner}/${selectedBounty.githubRepoName}/pull/${prNumber}`;
+      return communityBountiesAPI.claim(bountyId, prNumber, prUrl);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Bounty claimed",
+        description: "Your claim was recorded. Auto-payout will run after the PR merge is verified.",
+      });
+      setShowClaimDialog(false);
+      setClaimPrNumber("");
+      setSelectedBounty(null);
+      queryClient.invalidateQueries({ queryKey: ["community-bounties"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Claim failed",
+        description: error.message || "Please verify the PR number and try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleCreateBounty = () => {
     if (!formData.githubIssueUrl || !formData.title || !formData.amount) {
       toast({
@@ -206,6 +236,27 @@ export default function CommunityBountiesPage() {
     }
 
     createBountyMutation.mutate();
+  };
+
+  const handleClaimBounty = () => {
+    if (!selectedBounty) {
+      return;
+    }
+
+    const prNumber = parseInt(claimPrNumber, 10);
+    if (Number.isNaN(prNumber) || prNumber <= 0) {
+      toast({
+        title: "Invalid PR number",
+        description: "Enter the pull request number that closes this issue.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    claimBountyMutation.mutate({
+      bountyId: selectedBounty.id,
+      prNumber,
+    });
   };
 
   return (
@@ -485,17 +536,11 @@ export default function CommunityBountiesPage() {
                 </div>
               )}
 
-              {selectedBounty.status === 'funded' && user && (
+              {selectedBounty.status === 'funded' && isDeveloper(user) && (
                 <div className="pt-4 border-t">
                   <Button
                     className="w-full"
-                    onClick={() => {
-                      // TODO: Implement claim modal
-                      toast({
-                        title: "Claim Bounty",
-                        description: "Submit a PR that closes this issue to claim the bounty.",
-                      });
-                    }}
+                    onClick={() => setShowClaimDialog(true)}
                   >
                     <Trophy className="mr-2 h-4 w-4" />
                     Claim Bounty
@@ -678,6 +723,79 @@ export default function CommunityBountiesPage() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showClaimDialog} onOpenChange={setShowClaimDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Claim Community Bounty</DialogTitle>
+            <DialogDescription>
+              Submit the PR number that closes this issue. Roxonn will verify the merge and trigger auto-payout.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedBounty && (
+            <div className="space-y-4 mt-4">
+              <div className="rounded-lg border border-border/50 bg-muted/40 p-4 text-sm">
+                <div className="font-medium">{selectedBounty.title}</div>
+                <div className="text-muted-foreground mt-1">
+                  {selectedBounty.githubRepoOwner}/{selectedBounty.githubRepoName} #{selectedBounty.githubIssueNumber}
+                </div>
+                <div className="mt-2 font-semibold">
+                  {selectedBounty.amount} {selectedBounty.currency}
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="claim-pr-number">
+                  Pull Request Number <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="claim-pr-number"
+                  inputMode="numeric"
+                  placeholder="123"
+                  value={claimPrNumber}
+                  onChange={(e) => setClaimPrNumber(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  The PR should include <code>fixes #{selectedBounty.githubIssueNumber}</code> in its description.
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground">
+                PR URL: https://github.com/{selectedBounty.githubRepoOwner}/{selectedBounty.githubRepoName}/pull/{claimPrNumber || "<pr-number>"}
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowClaimDialog(false)}
+                  disabled={claimBountyMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleClaimBounty}
+                  disabled={claimBountyMutation.isPending}
+                >
+                  {claimBountyMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Claiming...
+                    </>
+                  ) : (
+                    <>
+                      <Trophy className="mr-2 h-4 w-4" />
+                      Submit Claim
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

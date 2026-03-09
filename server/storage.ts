@@ -952,11 +952,39 @@ export class DatabaseStorage implements IStorage {
    * WHY: Main bounty discovery interface, paginated for performance
    * WHY only 'funded' status: These are actively claimable bounties
    */
-  async getActiveCommunityBounties(limit: number = 50, offset: number = 0): Promise<any[]> {
+  async getActiveCommunityBounties(filters?: {
+    status?: string;
+    currency?: string;
+    githubRepoOwner?: string;
+    githubRepoName?: string;
+    createdByGithubUsername?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<any[]> {
     try {
+      const conditions = [];
+      const limit = filters?.limit ?? 50;
+      const offset = filters?.offset ?? 0;
+
+      if (filters?.status) {
+        conditions.push(eq(communityBounties.status, filters.status as any));
+      }
+      if (filters?.currency) {
+        conditions.push(eq(communityBounties.currency, filters.currency as any));
+      }
+      if (filters?.githubRepoOwner) {
+        conditions.push(eq(communityBounties.githubRepoOwner, filters.githubRepoOwner));
+      }
+      if (filters?.githubRepoName) {
+        conditions.push(eq(communityBounties.githubRepoName, filters.githubRepoName));
+      }
+      if (filters?.createdByGithubUsername) {
+        conditions.push(eq(communityBounties.createdByGithubUsername, filters.createdByGithubUsername));
+      }
+
       const bounties = await db.select()
         .from(communityBounties)
-        .where(eq(communityBounties.status, 'funded'))
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(desc(communityBounties.createdAt))
         .limit(limit)
         .offset(offset);
