@@ -62,6 +62,7 @@ export default function CommunityBountiesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all"); // Show all statuses by default
   const [currencyFilter, setCurrencyFilter] = useState<string>("all"); // Show all currencies by default
   const [selectedBounty, setSelectedBounty] = useState<CommunityBounty | null>(null);
+  const [claimingBounty, setClaimingBounty] = useState<CommunityBounty | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showClaimDialog, setShowClaimDialog] = useState(false);
   const [claimPrNumber, setClaimPrNumber] = useState("");
@@ -189,11 +190,11 @@ export default function CommunityBountiesPage() {
 
   const claimBountyMutation = useMutation({
     mutationFn: async ({ bountyId, prNumber }: { bountyId: number; prNumber: number }) => {
-      if (!selectedBounty) {
+      if (!claimingBounty) {
         throw new Error("No bounty selected");
       }
 
-      const prUrl = `https://github.com/${selectedBounty.githubRepoOwner}/${selectedBounty.githubRepoName}/pull/${prNumber}`;
+      const prUrl = `https://github.com/${claimingBounty.githubRepoOwner}/${claimingBounty.githubRepoName}/pull/${prNumber}`;
       return communityBountiesAPI.claim(bountyId, prNumber, prUrl);
     },
     onSuccess: () => {
@@ -203,6 +204,7 @@ export default function CommunityBountiesPage() {
       });
       setShowClaimDialog(false);
       setClaimPrNumber("");
+      setClaimingBounty(null);
       setSelectedBounty(null);
       queryClient.invalidateQueries({ queryKey: ["community-bounties"] });
     },
@@ -239,7 +241,7 @@ export default function CommunityBountiesPage() {
   };
 
   const handleClaimBounty = () => {
-    if (!selectedBounty) {
+    if (!claimingBounty) {
       return;
     }
 
@@ -254,9 +256,17 @@ export default function CommunityBountiesPage() {
     }
 
     claimBountyMutation.mutate({
-      bountyId: selectedBounty.id,
+      bountyId: claimingBounty.id,
       prNumber,
     });
+  };
+
+  const handleClaimDialogOpenChange = (open: boolean) => {
+    setShowClaimDialog(open);
+    if (!open) {
+      setClaimPrNumber("");
+      setClaimingBounty(null);
+    }
   };
 
   return (
@@ -540,7 +550,11 @@ export default function CommunityBountiesPage() {
                 <div className="pt-4 border-t">
                   <Button
                     className="w-full"
-                    onClick={() => setShowClaimDialog(true)}
+                    onClick={() => {
+                      setClaimingBounty(selectedBounty);
+                      setSelectedBounty(null);
+                      setShowClaimDialog(true);
+                    }}
                   >
                     <Trophy className="mr-2 h-4 w-4" />
                     Claim Bounty
@@ -726,7 +740,7 @@ export default function CommunityBountiesPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showClaimDialog} onOpenChange={setShowClaimDialog}>
+      <Dialog open={showClaimDialog} onOpenChange={handleClaimDialogOpenChange}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Claim Community Bounty</DialogTitle>
@@ -735,15 +749,15 @@ export default function CommunityBountiesPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {selectedBounty && (
+          {claimingBounty && (
             <div className="space-y-4 mt-4">
               <div className="rounded-lg border border-border/50 bg-muted/40 p-4 text-sm">
-                <div className="font-medium">{selectedBounty.title}</div>
+                <div className="font-medium">{claimingBounty.title}</div>
                 <div className="text-muted-foreground mt-1">
-                  {selectedBounty.githubRepoOwner}/{selectedBounty.githubRepoName} #{selectedBounty.githubIssueNumber}
+                  {claimingBounty.githubRepoOwner}/{claimingBounty.githubRepoName} #{claimingBounty.githubIssueNumber}
                 </div>
                 <div className="mt-2 font-semibold">
-                  {selectedBounty.amount} {selectedBounty.currency}
+                  {claimingBounty.amount} {claimingBounty.currency}
                 </div>
               </div>
 
@@ -759,12 +773,12 @@ export default function CommunityBountiesPage() {
                   onChange={(e) => setClaimPrNumber(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  The PR should include <code>fixes #{selectedBounty.githubIssueNumber}</code> in its description.
+                  The PR should include <code>fixes #{claimingBounty.githubIssueNumber}</code> in its description.
                 </p>
               </div>
 
               <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground">
-                PR URL: https://github.com/{selectedBounty.githubRepoOwner}/{selectedBounty.githubRepoName}/pull/{claimPrNumber || "<pr-number>"}
+                PR URL: https://github.com/{claimingBounty.githubRepoOwner}/{claimingBounty.githubRepoName}/pull/{claimPrNumber || "<pr-number>"}
               </div>
 
               <div className="flex gap-2 pt-2">
