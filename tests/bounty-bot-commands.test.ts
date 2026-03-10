@@ -402,6 +402,13 @@ describe('Bounty Bot Commands', () => {
           currency: 'USDC',
         })
       );
+      expect(githubModule.postGitHubComment).toHaveBeenCalledWith(
+        'install123',
+        'test',
+        'repo',
+        1,
+        expect.stringContaining('Pay with Crypto')
+      );
     });
   });
 
