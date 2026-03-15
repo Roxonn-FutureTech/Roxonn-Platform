@@ -280,6 +280,40 @@ router.post('/repository/:repoId/fund', requireAuth, requireClient, csrfProtecti
 });
 
 // Add endpoint to get rewards for multiple repositories (this needs to be updated for dual currency)
+/**
+ * @openapi
+ * /api/blockchain/repository-rewards:
+ *   post:
+ *     summary: Get rewards for multiple repositories (Deprecated)
+ *     tags: [Blockchain]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - repoIds
+ *             properties:
+ *               repoIds:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *     responses:
+ *       501:
+ *         description: Endpoint needs reimplementation for dual currency
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Server error
+ */
 router.post('/repository-rewards', async (req: Request, res: Response) => {
   // Temporarily removed express.json() for diagnostics
   try {
