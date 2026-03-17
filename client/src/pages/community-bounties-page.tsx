@@ -245,8 +245,8 @@ export default function CommunityBountiesPage() {
       return;
     }
 
-    const prNumber = parseInt(claimPrNumber, 10);
-    if (Number.isNaN(prNumber) || prNumber <= 0) {
+    const trimmedPrNumber = claimPrNumber.trim();
+    if (!/^[1-9]\d*$/.test(trimmedPrNumber)) {
       toast({
         title: "Invalid PR number",
         description: "Enter the pull request number that closes this issue.",
@@ -254,6 +254,8 @@ export default function CommunityBountiesPage() {
       });
       return;
     }
+
+    const prNumber = Number(trimmedPrNumber);
 
     claimBountyMutation.mutate({
       bountyId: claimingBounty.id,
