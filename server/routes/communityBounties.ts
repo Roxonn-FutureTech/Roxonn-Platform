@@ -502,33 +502,26 @@ router.get('/api/community-bounties', async (req: Request, res: Response) => {
       }
     }
 
-    // Fetch bounties (using storage service)
-    // For now, get active bounties and filter in memory
-    // TODO: Add proper filtering to storage.getActiveCommunityBounties()
-    const allBounties = await storage.getActiveCommunityBounties();
+    const filteredBounties = await storage.getActiveCommunityBounties({
+      status: filters.status,
+      currency: filters.currency,
+      githubRepoOwner: filters.githubRepoOwner,
+      githubRepoName: filters.githubRepoName,
+      createdByGithubUsername: filters.createdByGithubUsername,
+      limit: limitNum,
+      offset: offsetNum,
+    });
 
-    let filteredBounties = allBounties;
-
-    if (filters.status) {
-      filteredBounties = filteredBounties.filter(b => b.status === filters.status);
-    }
-    if (filters.currency) {
-      filteredBounties = filteredBounties.filter(b => b.currency === filters.currency);
-    }
-    if (filters.githubRepoOwner && filters.githubRepoName) {
-      filteredBounties = filteredBounties.filter(
-        b => b.githubRepoOwner === filters.githubRepoOwner && b.githubRepoName === filters.githubRepoName
-      );
-    }
-    if (filters.createdByGithubUsername) {
-      filteredBounties = filteredBounties.filter(b => b.createdByGithubUsername === filters.createdByGithubUsername);
-    }
-
-    const total = filteredBounties.length;
-    const paginatedBounties = filteredBounties.slice(offsetNum, offsetNum + limitNum);
+    const total = await storage.countActiveCommunityBounties({
+      status: filters.status,
+      currency: filters.currency,
+      githubRepoOwner: filters.githubRepoOwner,
+      githubRepoName: filters.githubRepoName,
+      createdByGithubUsername: filters.createdByGithubUsername,
+    });
 
     res.status(200).json({
-      bounties: paginatedBounties,
+      bounties: filteredBounties,
       total,
       limit: limitNum,
       offset: offsetNum
@@ -594,9 +587,9 @@ router.get('/api/community-bounties/leaderboard', async (req: Request, res: Resp
 
     log(`Fetching community bounties leaderboard (limit: ${limit})`, 'community-bounties');
 
-    // Get all completed bounties
-    const completedBounties = await storage.getActiveCommunityBounties();
-    const completed = completedBounties.filter(b => b.status === 'completed');
+    const completed = await storage.getActiveCommunityBounties({
+      status: 'completed',
+    });
 
     // Aggregate by contributor
     const contributorStats = new Map<string, {
