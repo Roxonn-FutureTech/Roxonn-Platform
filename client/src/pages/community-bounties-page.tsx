@@ -787,7 +787,7 @@ export default function CommunityBountiesPage() {
                 <Button
                   variant="outline"
                   className="flex-1"
-                  onClick={() => setShowClaimDialog(false)}
+                  onClick={() => handleClaimDialogOpenChange(false)}
                   disabled={claimBountyMutation.isPending}
                 >
                   Cancel
