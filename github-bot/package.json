@@ -11,11 +11,12 @@
     "test": "jest"
   },
   "dependencies": {
+    "lru-cache": "^11.2.7",
     "probot": "^12.2.4"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
     "@types/node": "^20.0.0",
-    "jest": "^29.0.0"
+    "jest": "^29.0.0",
+    "typescript": "^5.0.0"
   }
 }
