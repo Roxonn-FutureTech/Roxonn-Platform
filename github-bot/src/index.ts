@@ -114,15 +114,31 @@ export = (app: Probot) => {
     try {
       const commentBody = context.payload.comment.body.trim().toLowerCase();
       if (commentBody === "/attempt") {
-        const config = {
-          owner: context.payload.repository.owner.login,
-          repo: context.payload.repository.name,
-          issue_number: context.payload.issue.number
-        };
-        await context.octokit.issues.createComment({
-          ...config,
-          body: `🚀 @${context.payload.comment.user.login} has officially registered an attempt for this bounty!`
-        });
+        const issue = context.payload.issue;
+        const labels = issue.labels?.map((l) => typeof l === 'string' ? l : (l.name || "")) || [];
+        const fullText = `${issue.title} ${issue.body} ${labels.join(" ")}`;
+        
+        let bountyVal = extractBountyValue(fullText);
+        if (!bountyVal) {
+          for (const label of labels) {
+            bountyVal = extractBountyValue(label);
+            if (bountyVal) break;
+          }
+        }
+        
+        const stack = matchesStack(fullText);
+        
+        if (bountyVal && stack.length > 0) {
+          const config = {
+            owner: context.payload.repository.owner.login,
+            repo: context.payload.repository.name,
+            issue_number: context.payload.issue.number
+          };
+          await context.octokit.issues.createComment({
+            ...config,
+            body: `🚀 @${context.payload.comment.user.login} has officially registered an attempt for this **$${bountyVal}** bounty!`
+          });
+        }
       }
     } catch (e) {
       app.log.error(`Failed to process issue_comment.created webhook:`, e);
