@@ -70,7 +70,10 @@ export = (app: Probot) => {
     try {
       const issue = context.payload.issue;
       const labels = issue.labels?.map((l) => typeof l === 'string' ? l : (l.name || "")) || [];
+      const hasBountyLabel = labels.some((l: string) => BOUNTY_LABELS.some(bl => l.toLowerCase().includes(bl)));
       
+      if (!hasBountyLabel) return;
+
       const fullText = `${issue.title} ${issue.body} ${labels.join(" ")}`;
       
       let bountyVal = extractBountyValue(fullText);
@@ -116,6 +119,10 @@ export = (app: Probot) => {
       if (commentBody === "/attempt") {
         const issue = context.payload.issue;
         const labels = issue.labels?.map((l) => typeof l === 'string' ? l : (l.name || "")) || [];
+        const hasBountyLabel = labels.some((l: string) => BOUNTY_LABELS.some(bl => l.toLowerCase().includes(bl)));
+        
+        if (!hasBountyLabel) return;
+
         const fullText = `${issue.title} ${issue.body} ${labels.join(" ")}`;
         
         let bountyVal = extractBountyValue(fullText);
@@ -172,6 +179,10 @@ export = (app: Probot) => {
             const issue = issueReq.data;
             
             const labels = issue.labels.map((l) => typeof l === 'string' ? l : (l.name || ""));
+            const hasBountyLabel = labels.some((l: string) => BOUNTY_LABELS.some(bl => l.toLowerCase().includes(bl)));
+            
+            if (!hasBountyLabel) continue;
+
             const fullText = `${issue.title} ${issue.body} ${labels.join(" ")}`;
             const bountyVal = extractBountyValue(fullText);
             
