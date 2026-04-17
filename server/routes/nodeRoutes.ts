@@ -9,6 +9,28 @@ import { handleHeartbeat, getNodeStatus, getAllNodeStatuses } from '../services/
 const router = Router();
 
 // --- Proof of Compute V1 Routes ---
+/**
+ * @openapi
+ * /node/dispatch-task:
+ *   post:
+ *     summary: Endpoint for POST /node/dispatch-task
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/node/dispatch-task', requireAuth, async (req, res) => {
   try {
     const { prompt } = req.body;
@@ -23,6 +45,28 @@ router.post('/node/dispatch-task', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /node/heartbeat:
+ *   post:
+ *     summary: Endpoint for POST /node/heartbeat
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/node/heartbeat', express.json(), async (req, res) => {
   const { node_id, wallet_address, ip_address, port } = req.body;
   if (!node_id || !wallet_address || !ip_address || !port) {
@@ -36,6 +80,28 @@ router.post('/node/heartbeat', express.json(), async (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /node/status:
+ *   get:
+ *     summary: Endpoint for GET /node/status
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/node/status', requireAuth, async (req, res) => {
   try {
     const user = req.user;
@@ -50,6 +116,28 @@ router.get('/node/status', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /nodes/status:
+ *   get:
+ *     summary: Endpoint for GET /nodes/status
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/nodes/status', requireAuth, async (req, res) => {
   try {
     const statuses = await getAllNodeStatuses();
@@ -60,6 +148,28 @@ router.get('/nodes/status', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /node/check-registration:
+ *   get:
+ *     summary: Endpoint for GET /node/check-registration
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/node/check-registration', async (req, res) => {
   const { nodeId } = req.query;
   if (!nodeId || typeof nodeId !== 'string') {
@@ -73,6 +183,28 @@ router.get('/node/check-registration', async (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /node/register:
+ *   post:
+ *     summary: Endpoint for POST /node/register
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/node/register', express.json(), async (req, res) => {
   const { nodeId, walletAddress } = req.body;
   if (!nodeId || !walletAddress) {
@@ -86,6 +218,28 @@ router.post('/node/register', express.json(), async (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /node/compute-units:
+ *   get:
+ *     summary: Endpoint for GET /node/compute-units
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/node/compute-units', requireAuth, async (req, res) => {
   try {
     if (!req.user || !req.user.xdcWalletAddress) {

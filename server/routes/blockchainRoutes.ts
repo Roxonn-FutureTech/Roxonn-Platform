@@ -280,6 +280,28 @@ router.post('/repository/:repoId/fund', requireAuth, requireClient, csrfProtecti
 });
 
 // Add endpoint to get rewards for multiple repositories (this needs to be updated for dual currency)
+/**
+ * @openapi
+ * /repository-rewards:
+ *   post:
+ *     summary: Endpoint for POST /repository-rewards
+ *     tags: [Repository]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/repository-rewards', async (req: Request, res: Response) => {
   // Temporarily removed express.json() for diagnostics
   try {

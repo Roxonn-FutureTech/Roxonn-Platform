@@ -7,6 +7,28 @@ import { log } from '../utils';
 const router = Router();
 
 // New route for VSCode onboarding finalization
+/**
+ * @openapi
+ * /auth/vscode/finalize-onboarding:
+ *   get:
+ *     summary: Endpoint for GET /auth/vscode/finalize-onboarding
+ *     tags: [AI Integration]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/auth/vscode/finalize-onboarding', requireAuth, (req: Request, res: Response) => {
   if (!req.user) {
     log('VSCode finalize: No user in session. Should have been caught by requireAuth.', 'auth-ERROR');

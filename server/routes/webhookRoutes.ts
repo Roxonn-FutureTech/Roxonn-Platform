@@ -177,6 +177,28 @@ async function handleGitHubAppWebhook(req: Request, res: Response) {
 }
 
 // Webhook endpoint for Onramp.money transaction updates
+/**
+ * @openapi
+ * /api/webhook/onramp-money:
+ *   post:
+ *     summary: Endpoint for POST /api/webhook/onramp-money
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/api/webhook/onramp-money', express.json({
   verify: (req: IncomingMessage, res, buf) => {
     // Store the raw body for signature verification
@@ -395,6 +417,28 @@ router.post('/api/webhook/onramp-money', express.json({
 });
 
 // New GitHub App webhook endpoint
+/**
+ * @openapi
+ * /webhook/github/app:
+ *   post:
+ *     summary: Endpoint for POST /webhook/github/app
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/webhook/github/app', express.raw({ type: 'application/json' }), handleGitHubAppWebhook);
 
 export default router;

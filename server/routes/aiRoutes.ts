@@ -79,6 +79,28 @@ async function logAIUsage(userId: number, usageData: any): Promise<void> {
 
 // Special exemption for VSCode API endpoints - disable CSRF to allow token-based auth
 // VSCode extension will include JWT token in Authorization header but not CSRF token
+/**
+ * @openapi
+ * /api/vscode/ai/completions:
+ *   post:
+ *     summary: Endpoint for POST /api/vscode/ai/completions
+ *     tags: [AI Integration]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/api/vscode/ai/completions', requireAuth, async (req: Request, res: Response) => {
   log('VSCode AI Completions request received', 'vscode-ai');
   try {
@@ -199,6 +221,28 @@ router.post('/api/vscode/ai/completions', requireAuth, async (req: Request, res:
 });
 
 // Route without /api prefix for VSCode direct requests
+/**
+ * @openapi
+ * /vscode/ai/chat/completions:
+ *   post:
+ *     summary: Endpoint for POST /vscode/ai/chat/completions
+ *     tags: [AI Integration]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/vscode/ai/chat/completions', passport.authenticate('jwt', { session: false, failWithError: false }), requireVSCodeAuth, (req: Request, res: Response) => {
   log('VSCode AI Chat Completions request received (no /api prefix)', 'vscode-ai');
   // Use the new handler that supports streaming responses
@@ -207,6 +251,28 @@ router.post('/vscode/ai/chat/completions', passport.authenticate('jwt', { sessio
 
 // Additional endpoint for OpenAI client which appends /chat/completions to the base URL
 // This matches the endpoint format that the OpenAI client expects
+/**
+ * @openapi
+ * /api/vscode/ai/chat/completions:
+ *   post:
+ *     summary: Endpoint for POST /api/vscode/ai/chat/completions
+ *     tags: [AI Integration]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/api/vscode/ai/chat/completions', passport.authenticate('jwt', { session: false, failWithError: false }), requireVSCodeAuth, (req: Request, res: Response) => {
   log('VSCode AI Chat Completions request received', 'vscode-ai');
   // Use the new handler that supports streaming responses
@@ -214,6 +280,28 @@ router.post('/api/vscode/ai/chat/completions', passport.authenticate('jwt', { se
 });
 
 // --- VSCode Profile & Balance Endpoints ---
+/**
+ * @openapi
+ * /api/vscode/profile:
+ *   get:
+ *     summary: Endpoint for GET /api/vscode/profile
+ *     tags: [AI Integration]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/api/vscode/profile', passport.authenticate('jwt', { session: false, failWithError: false }), requireVSCodeAuth, (req: Request, res: Response) => {
   log('VSCode Profile request received', 'vscode-profile');
   if (!req.user) {
@@ -233,6 +321,28 @@ router.get('/api/vscode/profile', passport.authenticate('jwt', { session: false,
   res.json({ user: userProfileData }); // Nest under 'user' key
 });
 
+/**
+ * @openapi
+ * /api/vscode/profile/balance:
+ *   get:
+ *     summary: Endpoint for GET /api/vscode/profile/balance
+ *     tags: [AI Integration]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/api/vscode/profile/balance', passport.authenticate('jwt', { session: false, failWithError: false }), requireVSCodeAuth, (req: Request, res: Response) => {
   log('VSCode Profile Balance request received', 'vscode-profile');
   if (!req.user) {

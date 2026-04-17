@@ -879,6 +879,28 @@ router.get(
 );
 
 // Public API to get GitHub issues with bounty labels
+/**
+ * @openapi
+ * /public/github/issues:
+ *   get:
+ *     summary: Endpoint for GET /public/github/issues
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/public/github/issues', async (req: Request, res: Response) => {
   try {
     const { owner, repo, labels } = req.query;
@@ -927,6 +949,37 @@ router.get('/public/github/issues', async (req: Request, res: Response) => {
 });
 
 // NEW: Unified public API endpoint that combines all repository data sources
+/**
+ * @openapi
+ * /public/unified-repo/{owner}/{repo}:
+ *   get:
+ *     summary: Endpoint for GET /public/unified-repo/{owner}/{repo}
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: owner
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: repo
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/public/unified-repo/:owner/:repo', async (req: Request, res: Response) => {
   const { owner, repo } = req.params;
 
@@ -1082,6 +1135,28 @@ router.get(
 );
 
 // --- GitHub App Routes ---
+/**
+ * @openapi
+ * /github/app/install-url:
+ *   get:
+ *     summary: Endpoint for GET /github/app/install-url
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/github/app/install-url', requireAuth, (_req: Request, res: Response) => {
   // Construct the installation URL for the GitHub App
   // Use the config variable
@@ -1091,6 +1166,28 @@ router.get('/github/app/install-url', requireAuth, (_req: Request, res: Response
 });
 
 // NEW: Endpoint called by frontend after user redirects back from GitHub installation
+/**
+ * @openapi
+ * /github/app/finalize-installation:
+ *   post:
+ *     summary: Endpoint for POST /github/app/finalize-installation
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/github/app/finalize-installation', requireAuth, csrfProtection, async (req: Request, res: Response) => {
   const { installationId } = req.body;
   const userId = req.user!.id; // requireAuth ensures user exists
