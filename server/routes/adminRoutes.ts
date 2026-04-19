@@ -82,7 +82,7 @@ router.get('/admin/subscription/pending', requireAuth, csrfProtection, async (re
  * @openapi
  * /admin/subscription/verify/{orderId}:
  *   post:
- *     summary: Endpoint for POST /admin/subscription/verify/{orderId}
+ *     summary: Manually verify a subscription payment for a user
  *     tags: [Admin]
  *     security:
  *       - cookieAuth: []
@@ -92,16 +92,30 @@ router.get('/admin/subscription/pending', requireAuth, csrfProtection, async (re
  *         name: orderId
  *         required: true
  *         schema: { type: string }
+ *         description: The Onramp order ID to verify
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userId]
+ *             properties:
+ *               userId:
+ *                 type: integer
+ *                 description: The target user ID to verify subscription for
  *     responses:
  *       200:
- *         description: Successful response
+ *         description: Payment successfully verified and subscription activated
  *         content:
  *           application/json:
  *             schema: { type: object }
  *       400:
- *         description: Bad request
+ *         description: Bad request - missing orderId or userId
  *       401:
- *         description: Unauthorized
+ *         description: Unauthorized - user not authenticated
+ *       403:
+ *         description: Forbidden - admin access required
  *       500:
  *         description: Internal server error
  */
