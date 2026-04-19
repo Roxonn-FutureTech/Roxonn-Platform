@@ -1,5 +1,5 @@
-fastapi
-PyGithub
-uvicorn
-python-dotenv
-httpx
+fastapi==0.110.0
+PyGithub==2.2.0
+uvicorn==0.27.1
+python-dotenv==1.0.1
+httpx==0.27.0

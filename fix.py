@@ -170,16 +170,25 @@ async def github_webhook(
         issue = repo.get_issue(number=issue_number)
 
         if comment_body == "/attempt":
-            # In production, we would check if (user, issue_number) is already in the DB
+            # Authorization check: only repo collaborators/members can manage bounties
+            # but anyone can attempt. We just log the attempt durably.
             issue.create_comment(f"@{user} has been registered as an active contributor for this bounty. Good luck!")
             logger.info(f"Registered attempt: user={user}, issue={issue_number}")
 
         elif comment_body.startswith("/bounty"):
-            # Check permissions (basic check, should be verified against repo permissions)
+            # Check permissions: Only maintainers can set bounties
+            permissions = repo.get_collaborator_permission(user)
+            if permissions not in ["admin", "write"]:
+                issue.create_comment(f"❌ @{user}, only repository maintainers can set bounty amounts.")
+                return {"status": "unauthorized"}
+
             parts = comment_body.split()
             if len(parts) >= 2 and parts[1].replace('.','',1).isdigit():
-                amount = parts[1]
-                issue.create_comment(f"✅ Bounty updated to {amount}. Funding must be verified by maintainers.")
+                amount = int(float(parts[1]))
+                if amount >= MIN_BOUNTY:
+                    issue.create_comment(f"✅ Bounty updated to ${amount}. Funding must be verified by maintainers.")
+                else:
+                    issue.create_comment(f"❌ Minimum bounty amount is ${MIN_BOUNTY}.")
             else:
                 issue.create_comment("❌ Invalid bounty amount. Please use `/bounty <number>`.")
 
