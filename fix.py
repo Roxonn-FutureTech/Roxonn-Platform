@@ -4,6 +4,7 @@ import hmac
 import hashlib
 import json
 import logging
+from collections import OrderedDict
 from fastapi import FastAPI, Request, HTTPException, Header
 from github import Github, GithubIntegration
 
@@ -11,29 +12,44 @@ from github import Github, GithubIntegration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Standard environment variable names for GitHub Apps
 GITHUB_APP_ID = os.getenv("GITHUB_APP_ID")
-GITHUB_PRIVATE_KEY = os.getenv("GITHUB_PRIVATE_KEY")
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN") # Fallback
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
+# Normalize private key to handle escaped newlines in environment variables
+GITHUB_PRIVATE_KEY = (os.getenv("GITHUB_APP_PRIVATE_KEY") or os.getenv("GITHUB_PRIVATE_KEY") or "").replace("\\n", "\n")
+GITHUB_TOKEN = os.getenv("GITHUB_PAT") or os.getenv("GITHUB_TOKEN") # Fallback for non-app auth
+WEBHOOK_SECRET = os.getenv("GITHUB_APP_WEBHOOK_SECRET") or os.getenv("WEBHOOK_SECRET")
+
 MIN_BOUNTY = 50
 TECH_KEYWORDS = ["react", "python", "solidity", "typescript", "rust", "node", "javascript", "go"]
 
 # Fail closed if security config is missing
 if not WEBHOOK_SECRET:
-    logger.error("WEBHOOK_SECRET is not set. Webhook verification will fail.")
+    raise RuntimeError("GITHUB_APP_WEBHOOK_SECRET or WEBHOOK_SECRET is required for security.")
+
+if not GITHUB_APP_ID or not GITHUB_PRIVATE_KEY:
+    logger.warning("GitHub App credentials missing; falling back to GITHUB_TOKEN/PAT.")
 
 app = FastAPI()
 
-# Idempotency cache (simple in-memory for demo, should be Redis in prod)
-processed_deliveries = set()
+# Bounded Idempotency cache (LRU pattern via OrderedDict)
+processed_deliveries = OrderedDict()
+MAX_DELIVERY_CACHE_SIZE = 1000
 
 def get_github_client(installation_id: int = None):
     """Returns an authenticated GitHub client scoped to the installation."""
     if GITHUB_APP_ID and GITHUB_PRIVATE_KEY and installation_id:
-        integration = GithubIntegration(GITHUB_APP_ID, GITHUB_PRIVATE_KEY)
-        access_token = integration.get_access_token(installation_id).token
-        return Github(access_token)
-    return Github(GITHUB_TOKEN)
+        try:
+            integration = GithubIntegration(int(GITHUB_APP_ID), GITHUB_PRIVATE_KEY)
+            access_token = integration.get_access_token(installation_id).token
+            return Github(access_token)
+        except Exception as e:
+            logger.error(f"Failed to create installation client: {e}")
+            raise HTTPException(status_code=500, detail="GitHub App authentication failed")
+    
+    if GITHUB_TOKEN:
+        return Github(GITHUB_TOKEN)
+    
+    raise HTTPException(status_code=500, detail="No valid GitHub authentication configured")
 
 def verify_signature(payload_body: bytes, signature_header: str) -> bool:
     """Secure HMAC-SHA256 signature verification."""
@@ -80,12 +96,12 @@ async def github_webhook(
     if not verify_signature(payload_body, x_hub_signature_256):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
-    # 2. Idempotency Check
+    # 2. Idempotency Check (Guard against replay and missing IDs)
+    if not x_github_delivery:
+        raise HTTPException(status_code=400, detail="Missing X-GitHub-Delivery header")
+
     if x_github_delivery in processed_deliveries:
         return {"status": "already_processed"}
-    processed_deliveries.add(x_github_delivery)
-    if len(processed_deliveries) > 1000: # Simple LRU-ish cleanup
-        processed_deliveries.clear()
 
     event = request.headers.get("X-GitHub-Event")
     try:
@@ -110,12 +126,9 @@ async def github_webhook(
         
         issue = repo.get_issue(number=issue_data["number"])
         
-        # De-duplicate onboarding comment
-        comments = issue.get_comments()
-        if any("💰 Bounty Instructions" in c.body for c in comments):
-            return {"status": "already_tagged"}
-
-        msg = (
+        # De-duplicate or Update onboarding comment
+        tech = detect_tech(combined_text)
+        msg_body = (
             "### 👋 Welcome to Roxonn Platform!\n\n"
             "Thank you for your contribution. If this is a bounty issue, please follow these steps:\n\n"
             "#### 💰 Bounty Details\n"
@@ -132,10 +145,22 @@ async def github_webhook(
             "*Note: Use `/bounty <amount> <currency>` to set/update a bounty explicitly.*"
         ).format(
             bounty if bounty > 0 else "TBD", 
-            ", ".join(detect_tech(combined_text)) if detect_tech(combined_text) else "General", 
+            ", ".join(tech) if tech else "General", 
             issue_data["number"]
         )
-        issue.create_comment(msg)
+
+        existing_comment = None
+        for c in issue.get_comments():
+            if "💰 Bounty Instructions" in c.body or "Welcome to Roxonn Platform" in c.body:
+                existing_comment = c
+                break
+        
+        if existing_comment:
+            existing_comment.edit(msg_body)
+            result_status = "updated"
+        else:
+            issue.create_comment(msg_body)
+            result_status = "created"
 
     # 4. Handle Issue Commands (/attempt, /bounty, status)
     elif event == "issue_comment" and data.get("action") == "created":
@@ -145,26 +170,27 @@ async def github_webhook(
         issue = repo.get_issue(number=issue_number)
 
         if comment_body == "/attempt":
-            # Rate limiting check would go here (1 command/min/user/issue)
+            # In production, we would check if (user, issue_number) is already in the DB
             issue.create_comment(f"@{user} has been registered as an active contributor for this bounty. Good luck!")
             logger.info(f"Registered attempt: user={user}, issue={issue_number}")
 
         elif comment_body.startswith("/bounty"):
-            # Handle explicit bounty setting
+            # Check permissions (basic check, should be verified against repo permissions)
             parts = comment_body.split()
-            if len(parts) >= 2:
+            if len(parts) >= 2 and parts[1].replace('.','',1).isdigit():
                 amount = parts[1]
-                issue.create_comment(f"✅ Bounty updated to {amount}. Total funding must be verified before payout.")
+                issue.create_comment(f"✅ Bounty updated to {amount}. Funding must be verified by maintainers.")
+            else:
+                issue.create_comment("❌ Invalid bounty amount. Please use `/bounty <number>`.")
 
         elif "@roxonn status" in comment_body:
-            issue.create_comment("📊 **Bounty Status:** Open | **Claimants:** 1 | **Funding:** Pending Verification")
+            issue.create_comment("📊 **Bounty Status:** Open | **Funding:** Pending Verification")
 
     # 5. Handle Pull Request Merge (Validation)
     elif event == "pull_request" and data.get("action") == "closed":
         pr_data = data["pull_request"]
         if pr_data.get("merged") is True:
             pr_body = pr_data.get("body", "") or ""
-            # Find linked issues
             linked_issues = re.findall(r'(?:Fixes|Closes|Resolves)\s+#(\d+)', pr_body, re.IGNORECASE)
             for issue_num in linked_issues:
                 target_issue = repo.get_issue(number=int(issue_num))
@@ -177,15 +203,18 @@ async def github_webhook(
                         "Target Issue: #{0}\n"
                         "Amount: ${1}\n"
                         "Contributor: @{2}\n\n"
-                        "**Status:** Merge detected. Payout verification in progress. Payouts are normally processed within 60 seconds of manual audit."
+                        "**Status:** Merge detected. Funding and eligibility are pending maintainer verification."
                     ).format(issue_num, bounty_val, pr_data["user"]["login"])
                     pr.create_comment(payout_msg)
-                    logger.info(f"Bounty validated for PR #{pr_data['number']} -> Issue #{issue_num}")
+
+    # Record successful delivery in LRU cache
+    processed_deliveries[x_github_delivery] = True
+    if len(processed_deliveries) > MAX_DELIVERY_CACHE_SIZE:
+        processed_deliveries.popitem(last=False)
 
     return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn
-    # Use environment port for deployment flexibility
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
