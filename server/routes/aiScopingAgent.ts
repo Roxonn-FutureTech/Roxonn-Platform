@@ -14,6 +14,28 @@ const jobStore = new Map<string, { status: string; result: any }>();
  * @desc Upload a document for AI analysis
  * @access Private (Enterprise)
  */
+/**
+ * @openapi
+ * /upload:
+ *   post:
+ *     summary: Endpoint for POST /upload
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/upload', requireAuth, upload.single('document'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No document uploaded.' });
@@ -38,6 +60,33 @@ router.post('/upload', requireAuth, upload.single('document'), async (req, res) 
  * @route GET /api/ai-scoping/results/:jobId
  * @desc Poll for the results of an analysis job
  * @access Private (Enterprise)
+ */
+/**
+ * @openapi
+ * /results/{jobId}:
+ *   get:
+ *     summary: Endpoint for GET /results/{jobId}
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.get('/results/:jobId', requireAuth, (req, res) => {
   const { jobId } = req.params;

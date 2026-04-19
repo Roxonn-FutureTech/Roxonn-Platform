@@ -13,11 +13,55 @@ import { storage } from '../storage';
 const router = Router();
 
 // Health check endpoint for AWS ALB
+/**
+ * @openapi
+ * /health:
+ *   get:
+ *     summary: Endpoint for GET /health
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get("/health", (req, res) => {
   res.status(200).json({ status: "healthy" });
 });
 
 // Zoho CRM Integration Routes
+/**
+ * @openapi
+ * /api/zoho/auth:
+ *   get:
+ *     summary: Endpoint for GET /api/zoho/auth
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get("/api/zoho/auth", (req, res) => {
   if (!isZohoConfigured()) {
     return res.status(500).json({ error: "Zoho CRM is not configured" });
@@ -29,6 +73,28 @@ router.get("/api/zoho/auth", (req, res) => {
 });
 
 // Zoho OAuth callback handler
+/**
+ * @openapi
+ * /api/zoho/auth/callback:
+ *   get:
+ *     summary: Endpoint for GET /api/zoho/auth/callback
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get("/api/zoho/auth/callback", async (req, res) => {
   const { code } = req.query;
 
@@ -54,6 +120,33 @@ router.get("/api/zoho/auth/callback", async (req, res) => {
 });
 
 // Get course videos with subscription gating
+/**
+ * @openapi
+ * /api/courses/{courseId}/videos:
+ *   get:
+ *     summary: Endpoint for GET /api/courses/{courseId}/videos
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: courseId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/api/courses/:courseId/videos', requireAuth, csrfProtection, async (req, res) => {
   try {
     const user = req.user;
@@ -92,6 +185,37 @@ router.get('/api/courses/:courseId/videos', requireAuth, csrfProtection, async (
 });
 
 // Get course resource URL (requires subscription)
+/**
+ * @openapi
+ * /api/courses/{courseId}/resources/{resourceType}:
+ *   get:
+ *     summary: Endpoint for GET /api/courses/{courseId}/resources/{resourceType}
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: courseId
+ *         required: true
+ *         schema: { type: string }
+ *       - in: path
+ *         name: resourceType
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/api/courses/:courseId/resources/:resourceType', requireAuth, csrfProtection, async (req, res) => {
   try {
     const user = req.user;
@@ -132,6 +256,28 @@ router.get('/api/courses/:courseId/resources/:resourceType', requireAuth, csrfPr
 });
 
 // Submit course assignment
+/**
+ * @openapi
+ * /api/submit-assignment:
+ *   post:
+ *     summary: Endpoint for POST /api/submit-assignment
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/api/submit-assignment', requireAuth, csrfProtection, async (req, res) => {
   try {
     const user = req.user;
@@ -176,6 +322,28 @@ router.post('/api/submit-assignment', requireAuth, csrfProtection, async (req, r
 });
 
 // Token-specific endpoints
+/**
+ * @openapi
+ * /api/token/balance:
+ *   get:
+ *     summary: Endpoint for GET /api/token/balance
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get("/api/token/balance", requireAuth, async (req: Request, res: Response) => {
   try {
     const user = req.user;
@@ -193,6 +361,28 @@ router.get("/api/token/balance", requireAuth, async (req: Request, res: Response
 });
 
 // User Activity API - aggregates activity from multiple sources
+/**
+ * @openapi
+ * /api/user/activity:
+ *   get:
+ *     summary: Endpoint for GET /api/user/activity
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/api/user/activity', requireAuth, async (req: Request, res: Response) => {
   try {
     const user = req.user;
@@ -214,6 +404,28 @@ router.get('/api/user/activity', requireAuth, async (req: Request, res: Response
 });
 
 // Protected profile routes
+/**
+ * @openapi
+ * /api/profile:
+ *   patch:
+ *     summary: Endpoint for PATCH /api/profile
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.patch("/api/profile", requireAuth, csrfProtection, async (req, res) => {
   const { updateProfileSchema } = await import('@shared/schema');
   const { storage } = await import('../storage');

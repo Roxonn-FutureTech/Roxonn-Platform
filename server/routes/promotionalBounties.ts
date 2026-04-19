@@ -98,6 +98,28 @@ const transformSubmission = (submission: any) => {
 };
 
 // Get user's registered repos
+/**
+ * @openapi
+ * /repositories:
+ *   get:
+ *     summary: Endpoint for GET /repositories
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/repositories', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
@@ -120,6 +142,28 @@ router.get('/repositories', requireAuth, async (req: Request, res: Response) => 
 });
 
 // Get all bounties
+/**
+ * @openapi
+ * /bounties:
+ *   get:
+ *     summary: Endpoint for GET /bounties
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/bounties', async (req: Request, res: Response) => {
   try {
     const { type, status, repoId, channel } = req.query;
@@ -169,6 +213,28 @@ router.get('/bounties', async (req: Request, res: Response) => {
 });
 
 // Get only promotional bounties
+/**
+ * @openapi
+ * /bounties/promotional:
+ *   get:
+ *     summary: Endpoint for GET /bounties/promotional
+ *     tags: [Promotional Bounties]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/bounties/promotional', async (req: Request, res: Response) => {
   try {
     const { status, channel, repoId } = req.query;
@@ -217,6 +283,33 @@ router.get('/bounties/promotional', async (req: Request, res: Response) => {
 });
 
 // Get bounty by ID
+/**
+ * @openapi
+ * /bounties/{id}:
+ *   get:
+ *     summary: Endpoint for GET /bounties/{id}
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/bounties/:id', async (req: Request, res: Response) => {
   try {
     const bountyId = parseInt(req.params.id, 10);
@@ -256,6 +349,28 @@ router.get('/bounties/:id', async (req: Request, res: Response) => {
 });
 
 // Create bounty - CLIENT (pool managers) only
+/**
+ * @openapi
+ * /bounties:
+ *   post:
+ *     summary: Endpoint for POST /bounties
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/bounties', requireAuth, requireClient, csrfProtection, createBountyRateLimiter, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
@@ -319,6 +434,33 @@ router.post('/bounties', requireAuth, requireClient, csrfProtection, createBount
 
 
 // Update bounty status - CLIENT (pool managers) only
+/**
+ * @openapi
+ * /bounties/{id}/status:
+ *   patch:
+ *     summary: Endpoint for PATCH /bounties/{id}/status
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.patch('/bounties/:id/status', requireAuth, requireClient, csrfProtection, updateBountyRateLimiter, async (req: Request, res: Response) => {
   try {
     const bountyId = parseInt(req.params.id, 10);
@@ -371,6 +513,28 @@ router.patch('/bounties/:id/status', requireAuth, requireClient, csrfProtection,
 });
 
 // Submissions
+/**
+ * @openapi
+ * /submissions:
+ *   get:
+ *     summary: Endpoint for GET /submissions
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/submissions', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
@@ -448,6 +612,33 @@ router.get('/submissions', requireAuth, async (req: Request, res: Response) => {
 });
 
 // Get submission by ID
+/**
+ * @openapi
+ * /submissions/{id}:
+ *   get:
+ *     summary: Endpoint for GET /submissions/{id}
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/submissions/:id', requireAuth, async (req: Request, res: Response) => {
   try {
     const submissionId = parseInt(req.params.id, 10);
@@ -507,6 +698,28 @@ router.get('/submissions/:id', requireAuth, async (req: Request, res: Response) 
 });
 
 // Create submission - DEVELOPER (contributors) only
+/**
+ * @openapi
+ * /submissions:
+ *   post:
+ *     summary: Endpoint for POST /submissions
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/submissions', requireAuth, requireDeveloper, csrfProtection, submissionRateLimiter, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
@@ -588,6 +801,33 @@ router.post('/submissions', requireAuth, requireDeveloper, csrfProtection, submi
 });
 
 // Review submission - CLIENT (pool managers) only
+/**
+ * @openapi
+ * /submissions/{id}/review:
+ *   patch:
+ *     summary: Endpoint for PATCH /submissions/{id}/review
+ *     tags: [General]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.patch('/submissions/:id/review', requireAuth, requireClient, csrfProtection, reviewRateLimiter, async (req: Request, res: Response) => {
   try {
     const submissionId = parseInt(req.params.id, 10);

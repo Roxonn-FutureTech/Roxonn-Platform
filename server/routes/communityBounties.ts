@@ -472,6 +472,28 @@ router.post(
  *   offset: number
  * }
  */
+/**
+ * @openapi
+ * /api/community-bounties:
+ *   get:
+ *     summary: Endpoint for GET /api/community-bounties
+ *     tags: [Community Bounties]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/api/community-bounties', async (req: Request, res: Response) => {
   try {
     const {
@@ -549,6 +571,33 @@ router.get('/api/community-bounties', async (req: Request, res: Response) => {
  *   bounty: { ... all fields }
  * }
  */
+/**
+ * @openapi
+ * /api/community-bounties/{id}:
+ *   get:
+ *     summary: Endpoint for GET /api/community-bounties/{id}
+ *     tags: [Community Bounties]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/api/community-bounties/:id', async (req: Request, res: Response) => {
   try {
     const bountyId = parseInt(req.params.id);
@@ -587,6 +636,28 @@ router.get('/api/community-bounties/:id', async (req: Request, res: Response) =>
  *     }
  *   ]
  * }
+ */
+/**
+ * @openapi
+ * /api/community-bounties/leaderboard:
+ *   get:
+ *     summary: Endpoint for GET /api/community-bounties/leaderboard
+ *     tags: [Community Bounties]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.get('/api/community-bounties/leaderboard', async (req: Request, res: Response) => {
   try {

@@ -8,6 +8,28 @@ const router = Router();
 const ADMIN_USER_ID = 1;
 
 // Admin: Get all pending subscription payments
+/**
+ * @openapi
+ * /admin/subscription/pending:
+ *   get:
+ *     summary: Endpoint for GET /admin/subscription/pending
+ *     tags: [Admin]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/admin/subscription/pending', requireAuth, csrfProtection, async (req, res) => {
   try {
     const user = req.user;
@@ -56,6 +78,47 @@ router.get('/admin/subscription/pending', requireAuth, csrfProtection, async (re
 });
 
 // Admin: Manually verify a payment
+/**
+ * @openapi
+ * /admin/subscription/verify/{orderId}:
+ *   post:
+ *     summary: Manually verify a subscription payment for a user
+ *     tags: [Admin]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema: { type: string }
+ *         description: The Onramp order ID to verify
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userId]
+ *             properties:
+ *               userId:
+ *                 type: integer
+ *                 description: The target user ID to verify subscription for
+ *     responses:
+ *       200:
+ *         description: Payment successfully verified and subscription activated
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request - missing orderId or userId
+ *       401:
+ *         description: Unauthorized - user not authenticated
+ *       403:
+ *         description: Forbidden - admin access required
+ *       500:
+ *         description: Internal server error
+ */
 router.post('/admin/subscription/verify/:orderId', requireAuth, csrfProtection, async (req, res) => {
   try {
     const user = req.user;
@@ -95,6 +158,33 @@ router.post('/admin/subscription/verify/:orderId', requireAuth, csrfProtection, 
 });
 
 // Admin: Check Onramp order status
+/**
+ * @openapi
+ * /admin/onramp/order/{orderId}:
+ *   get:
+ *     summary: Endpoint for GET /admin/onramp/order/{orderId}
+ *     tags: [Admin]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/admin/onramp/order/:orderId', requireAuth, csrfProtection, async (req, res) => {
   try {
     const user = req.user;
@@ -134,6 +224,28 @@ router.get('/admin/onramp/order/:orderId', requireAuth, csrfProtection, async (r
 });
 
 // Admin: Get verification attempts log
+/**
+ * @openapi
+ * /admin/verification-log:
+ *   get:
+ *     summary: Endpoint for GET /admin/verification-log
+ *     tags: [Admin]
+ *     security:
+ *       - cookieAuth: []
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successful response
+ *         content:
+ *           application/json:
+ *             schema: { type: object }
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
 router.get('/admin/verification-log', requireAuth, csrfProtection, async (req, res) => {
   try {
     const user = req.user;
