@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { promotionalBountiesAPI, type PromotionalBounty } from "@/lib/promotional-bounties-api";
+import { type PromotionalBounty } from "@/lib/promotional-bounties-api";
+import { usePromotionalBounties } from "@/hooks/use-promotional-bounties";
 import { Plus, Search, Filter, Calendar, Coins, Users, ArrowRight } from "lucide-react";
 import { format } from "date-fns";
 
@@ -38,13 +39,9 @@ export default function PromotionalBountiesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("ACTIVE");
   const [channelFilter, setChannelFilter] = useState<string>("");
 
-  const { data: bounties, isLoading } = useQuery({
-    queryKey: ["promotional-bounties", statusFilter, channelFilter],
-    queryFn: () =>
-      promotionalBountiesAPI.getAll({
-        status: statusFilter || undefined,
-        channel: channelFilter || undefined,
-      }),
+  const { data: bounties, isLoading } = usePromotionalBounties({
+    status: statusFilter || undefined,
+    channel: channelFilter || undefined,
   });
 
   const filteredBounties = bounties?.filter((bounty) => {
