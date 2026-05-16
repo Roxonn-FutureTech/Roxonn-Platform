@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { promotionalBountiesAPI, type CreateBountyInput } from "@/lib/promotional-bounties-api";
+import { type CreateBountyInput } from "@/lib/promotional-bounties-api";
+import { useCreateBounty } from "@/hooks/use-promotional-bounties";
 import { ArrowLeft, Loader2, CheckCircle2, XCircle } from "lucide-react";
 
 const PROMOTIONAL_CHANNELS = [
@@ -28,7 +29,6 @@ const PROMOTIONAL_CHANNELS = [
 export default function PromotionalBountiesCreatePage() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
-  const queryClient = useQueryClient();
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState(false);
 

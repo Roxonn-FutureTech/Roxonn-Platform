@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
 import { useLocation, useRoute } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -27,24 +27,15 @@ export default function PromotionalBountiesDetailPage() {
   const { user } = useAuth();
   const [, params] = useRoute("/promotional-bounties/:id");
   const [, setLocation] = useLocation();
-  const queryClient = useQueryClient();
   const [submissionOpen, setSubmissionOpen] = useState(false);
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState(false);
 
   const bountyId = params?.id ? parseInt(params.id, 10) : 0;
 
-  const { data: bounty, isLoading } = useQuery({
-    queryKey: ["promotional-bounty", bountyId],
-    queryFn: () => promotionalBountiesAPI.getById(bountyId),
-    enabled: !!bountyId,
-  });
+  const { data: bounty, isLoading } = usePromotionalBounty(bountyId);
 
-  const { data: submissions } = useQuery({
-    queryKey: ["promotional-submissions", bountyId],
-    queryFn: () => promotionalBountiesAPI.getSubmissions(bountyId),
-    enabled: !!bountyId,
-  });
+  const { data: submissions } = usePromotionalBountySubmissions(bountyId);
 
   const [submissionForm, setSubmissionForm] = useState<CreateSubmissionInput>({
     bountyId,
