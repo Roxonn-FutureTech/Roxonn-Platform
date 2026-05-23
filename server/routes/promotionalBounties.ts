@@ -301,6 +301,7 @@ router.post('/bounties', requireAuth, requireClient, csrfProtection, createBount
       requiredDeliverable: validatedData.requiredDeliverable,
       rewardAmount: validatedData.rewardAmount,
       rewardType: validatedData.rewardType,
+      rewardCurrency: validatedData.rewardCurrency || 'XDC',
       maxSubmissions: validatedData.maxSubmissions,
       totalRewardPool: validatedData.totalRewardPool,
       expiresAt: validatedData.expiresAt ? new Date(validatedData.expiresAt) : null,
