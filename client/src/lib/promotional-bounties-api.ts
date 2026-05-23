@@ -12,6 +12,7 @@ export interface PromotionalBounty {
   requiredDeliverable: string | null;
   rewardAmount: string;
   rewardType: "PER_SUBMISSION" | "POOL" | "TIERED";
+  rewardCurrency: "XDC" | "ROXN" | "USDC";
   maxSubmissions: number | null;
   totalRewardPool: string | null;
   campaignId: string | null;
@@ -43,6 +44,7 @@ export interface CreateBountyInput {
   requiredDeliverable: string;
   rewardAmount: string;
   rewardType?: "PER_SUBMISSION" | "POOL" | "TIERED";
+  rewardCurrency?: "XDC" | "ROXN" | "USDC";
   maxSubmissions?: number;
   totalRewardPool?: string;
   expiresAt?: string;

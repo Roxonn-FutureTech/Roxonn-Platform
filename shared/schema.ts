@@ -539,6 +539,7 @@ export const promotionalBounties = pgTable("promotional_bounties", {
   requiredDeliverable: text("required_deliverable"),
   rewardAmount: decimal("reward_amount", { precision: 18, scale: 8 }).notNull(),
   rewardType: text("reward_type", { enum: ["PER_SUBMISSION", "POOL", "TIERED"] }).notNull().default("PER_SUBMISSION"),
+  rewardCurrency: text("reward_currency", { enum: ["XDC", "ROXN", "USDC"] }).notNull().default("XDC"),
   maxSubmissions: integer("max_submissions"),
   totalRewardPool: decimal("total_reward_pool", { precision: 18, scale: 8 }),
   campaignId: text("campaign_id"),
