@@ -1,0 +1,2 @@
+ALTER TABLE "promotional_bounties" ADD COLUMN "reward_currency" text DEFAULT 'XDC' NOT NULL;
+ALTER TABLE "promotional_bounties" ADD CONSTRAINT "promotional_bounties_reward_currency_check" CHECK ("reward_currency" IN ('XDC', 'ROXN', 'USDC'));
