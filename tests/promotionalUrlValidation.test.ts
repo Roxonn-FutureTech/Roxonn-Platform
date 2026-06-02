@@ -33,8 +33,22 @@ describe("promotional proof link validation", () => {
     expect(result.valid).toBe(false);
   });
 
+  it("accepts links when any selected channel matches mixed generic and social channels", () => {
+    expect(validateProofLinkForChannels("http://x.com/roxonn/status/1", ["Twitter", "Blog"]).valid).toBe(true);
+    expect(validateProofLinkForChannels("https://example.com/post", ["Twitter", "Blog"]).valid).toBe(true);
+    expect(validateProofLinkForChannels("http://example.com/post", ["Twitter", "Blog"]).valid).toBe(false);
+  });
+
+  it("rejects unsupported channel names instead of bypassing hostname validation", () => {
+    const result = validateProofLinkForChannels("https://example.com/post", ["Newsletter"]);
+
+    expect(result.valid).toBe(false);
+    expect(result.message).toBe("Unsupported promotional channel.");
+  });
+
   it("returns helpful supported-domain hints", () => {
     expect(getSupportedProofLinkHint(["Twitter", "YouTube"])).toContain("twitter.com");
     expect(getSupportedProofLinkHint(["Twitter", "YouTube"])).toContain("youtube.com");
+    expect(getSupportedProofLinkHint(["Twitter", "Blog"])).toContain("Use HTTPS for Blog");
   });
 });

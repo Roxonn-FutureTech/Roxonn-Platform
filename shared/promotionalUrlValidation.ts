@@ -28,8 +28,13 @@ export function getSupportedProofLinkHint(channels: string[]): string {
   const domains = channels
     .flatMap((channel) => CHANNEL_DOMAINS[normalizeChannel(channel)] ?? [])
     .filter((domain, index, all) => all.indexOf(domain) === index);
+  const hasGenericChannel = channels.some((channel) => GENERIC_HTTPS_CHANNELS.has(normalizeChannel(channel)));
 
-  if (channels.some((channel) => GENERIC_HTTPS_CHANNELS.has(normalizeChannel(channel)))) {
+  if (hasGenericChannel && domains.length > 0) {
+    return `Use HTTPS for Blog, Forum, or Other links, or a valid proof link from: ${domains.join(", ")}.`;
+  }
+
+  if (hasGenericChannel) {
     return "Use a valid HTTPS URL for the selected channel.";
   }
 
@@ -56,15 +61,22 @@ export function validateProofLinkForChannels(
   }
 
   const normalizedChannels = channels.map(normalizeChannel);
-  if (normalizedChannels.some((channel) => GENERIC_HTTPS_CHANNELS.has(channel))) {
-    if (parsed.protocol !== "https:") {
-      return { valid: false, message: "Blog, forum, and other proof links must use HTTPS." };
-    }
+  const hasGenericChannel = normalizedChannels.some((channel) => GENERIC_HTTPS_CHANNELS.has(channel));
+  const allowedDomains = normalizedChannels.flatMap((channel) => CHANNEL_DOMAINS[channel] ?? []);
+  const hasRecognizedChannel = hasGenericChannel || allowedDomains.length > 0;
+
+  if (normalizedChannels.length > 0 && !hasRecognizedChannel) {
+    return { valid: false, message: "Unsupported promotional channel." };
+  }
+
+  if (hasGenericChannel && parsed.protocol === "https:") {
     return { valid: true };
   }
 
-  const allowedDomains = normalizedChannels.flatMap((channel) => CHANNEL_DOMAINS[channel] ?? []);
   if (allowedDomains.length === 0) {
+    if (hasGenericChannel) {
+      return { valid: false, message: "Blog, forum, and other proof links must use HTTPS." };
+    }
     return { valid: true };
   }
 
@@ -73,7 +85,9 @@ export function validateProofLinkForChannels(
   if (!valid) {
     return {
       valid: false,
-      message: getSupportedProofLinkHint(channels),
+      message: hasGenericChannel && parsed.protocol !== "https:"
+        ? "Blog, forum, and other proof links must use HTTPS."
+        : getSupportedProofLinkHint(channels),
     };
   }
 
