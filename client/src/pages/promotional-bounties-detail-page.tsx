@@ -12,6 +12,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { promotionalBountiesAPI, type PromotionalBounty, type CreateSubmissionInput } from "@/lib/promotional-bounties-api";
+import {
+  getSupportedProofLinkHint,
+  validateProofLinkForChannels,
+  validateProofLinksForChannels,
+} from "@shared/promotionalUrlValidation";
 import { ArrowLeft, Coins, Calendar, Users, CheckCircle2, XCircle, Plus, X, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 
@@ -95,6 +100,12 @@ export default function PromotionalBountiesDetailPage() {
     const validLinks = submissionForm.proofLinks.filter((link) => link.trim());
     if (validLinks.length === 0) {
       setError("Please provide at least one proof link");
+      return;
+    }
+
+    const proofLinkValidation = validateProofLinksForChannels(validLinks, bounty?.promotionalChannels ?? []);
+    if (!proofLinkValidation.valid) {
+      setError(proofLinkValidation.message || "Invalid proof link for the selected promotional channel");
       return;
     }
 
@@ -189,26 +200,36 @@ export default function PromotionalBountiesDetailPage() {
                     <div className="space-y-2">
                       <Label>Proof Links *</Label>
                       {submissionForm.proofLinks.map((link, index) => (
-                        <div key={index} className="flex gap-2">
-                          <Input
-                            type="url"
-                            value={link}
-                            onChange={(e) => handleLinkChange(index, e.target.value)}
-                            placeholder="https://twitter.com/..."
-                            required={index === 0}
-                          />
-                          {submissionForm.proofLinks.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              onClick={() => handleRemoveLink(index)}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
+                        <div key={index} className="space-y-1">
+                          <div className="flex gap-2">
+                            <Input
+                              type="url"
+                              value={link}
+                              onChange={(e) => handleLinkChange(index, e.target.value)}
+                              placeholder="https://twitter.com/..."
+                              required={index === 0}
+                            />
+                            {submissionForm.proofLinks.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={() => handleRemoveLink(index)}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                          {link.trim() && !validateProofLinkForChannels(link, bounty.promotionalChannels).valid && (
+                            <p className="text-sm text-red-500">
+                              {validateProofLinkForChannels(link, bounty.promotionalChannels).message}
+                            </p>
                           )}
                         </div>
                       ))}
+                      <p className="text-sm text-muted-foreground">
+                        {getSupportedProofLinkHint(bounty.promotionalChannels)}
+                      </p>
                       <Button type="button" variant="outline" onClick={handleAddLink} className="w-full">
                         <Plus className="mr-2 h-4 w-4" />
                         Add Another Link
