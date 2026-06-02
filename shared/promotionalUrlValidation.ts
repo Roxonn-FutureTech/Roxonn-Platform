@@ -29,6 +29,11 @@ export function getSupportedProofLinkHint(channels: string[]): string {
     .flatMap((channel) => CHANNEL_DOMAINS[normalizeChannel(channel)] ?? [])
     .filter((domain, index, all) => all.indexOf(domain) === index);
   const hasGenericChannel = channels.some((channel) => GENERIC_HTTPS_CHANNELS.has(normalizeChannel(channel)));
+  const hasRecognizedChannel = hasGenericChannel || domains.length > 0;
+
+  if (!hasRecognizedChannel) {
+    return "No recognized promotional channels were provided.";
+  }
 
   if (hasGenericChannel && domains.length > 0) {
     return `Use HTTPS for Blog, Forum, or Other links, or a valid proof link from: ${domains.join(", ")}.`;
@@ -39,7 +44,7 @@ export function getSupportedProofLinkHint(channels: string[]): string {
   }
 
   if (domains.length === 0) {
-    return "Use a valid HTTP or HTTPS proof link.";
+    return "No recognized promotional channels were provided.";
   }
 
   return `Use a valid proof link from: ${domains.join(", ")}.`;
@@ -65,8 +70,8 @@ export function validateProofLinkForChannels(
   const allowedDomains = normalizedChannels.flatMap((channel) => CHANNEL_DOMAINS[channel] ?? []);
   const hasRecognizedChannel = hasGenericChannel || allowedDomains.length > 0;
 
-  if (normalizedChannels.length > 0 && !hasRecognizedChannel) {
-    return { valid: false, message: "Unsupported promotional channel." };
+  if (!hasRecognizedChannel) {
+    return { valid: false, message: "No recognized promotional channels were provided." };
   }
 
   if (hasGenericChannel && parsed.protocol === "https:") {

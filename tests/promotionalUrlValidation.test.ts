@@ -43,12 +43,20 @@ describe("promotional proof link validation", () => {
     const result = validateProofLinkForChannels("https://example.com/post", ["Newsletter"]);
 
     expect(result.valid).toBe(false);
-    expect(result.message).toBe("Unsupported promotional channel.");
+    expect(result.message).toBe("No recognized promotional channels were provided.");
+  });
+
+  it("rejects empty channel lists instead of accepting arbitrary proof links", () => {
+    const result = validateProofLinkForChannels("https://example.com/post", []);
+
+    expect(result.valid).toBe(false);
+    expect(result.message).toBe("No recognized promotional channels were provided.");
   });
 
   it("returns helpful supported-domain hints", () => {
     expect(getSupportedProofLinkHint(["Twitter", "YouTube"])).toContain("twitter.com");
     expect(getSupportedProofLinkHint(["Twitter", "YouTube"])).toContain("youtube.com");
     expect(getSupportedProofLinkHint(["Twitter", "Blog"])).toContain("Use HTTPS for Blog");
+    expect(getSupportedProofLinkHint(["Newsletter"])).toContain("No recognized promotional channels");
   });
 });
