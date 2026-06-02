@@ -25,6 +25,9 @@ const PROMOTIONAL_CHANNELS = [
   "Other",
 ];
 
+const REWARD_CURRENCIES = ["XDC", "ROXN", "USDC"] as const;
+type RewardCurrency = (typeof REWARD_CURRENCIES)[number];
+
 export default function PromotionalBountiesCreatePage() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
@@ -40,6 +43,7 @@ export default function PromotionalBountiesCreatePage() {
     promotionalChannels: [],
     requiredDeliverable: "",
     rewardAmount: "",
+    rewardCurrency: "ROXN",
     rewardType: "PER_SUBMISSION",
     maxSubmissions: undefined,
     totalRewardPool: undefined,
@@ -216,7 +220,7 @@ export default function PromotionalBountiesCreatePage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="rewardAmount">Reward Amount (ROXN) *</Label>
+                <Label htmlFor="rewardAmount">Reward Amount ({formData.rewardCurrency || "ROXN"}) *</Label>
                 <Input
                   id="rewardAmount"
                   type="number"
@@ -229,6 +233,27 @@ export default function PromotionalBountiesCreatePage() {
                 />
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="rewardCurrency">Reward Currency *</Label>
+                <Select
+                  value={formData.rewardCurrency || "ROXN"}
+                  onValueChange={(value) => setFormData((prev) => ({ ...prev, rewardCurrency: value as RewardCurrency }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REWARD_CURRENCIES.map((currency) => (
+                      <SelectItem key={currency} value={currency}>
+                        {currency}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="rewardType">Reward Type *</Label>
                 <Select
@@ -249,7 +274,7 @@ export default function PromotionalBountiesCreatePage() {
 
             {formData.rewardType === "POOL" && (
               <div className="space-y-2">
-                <Label htmlFor="totalRewardPool">Total Reward Pool (ROXN)</Label>
+                <Label htmlFor="totalRewardPool">Total Reward Pool ({formData.rewardCurrency || "ROXN"})</Label>
                 <Input
                   id="totalRewardPool"
                   type="number"

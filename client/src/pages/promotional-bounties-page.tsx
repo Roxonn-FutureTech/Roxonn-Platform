@@ -166,7 +166,9 @@ function BountyCard({ bounty }: { bounty: PromotionalBounty }) {
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-sm">
             <Coins className="h-4 w-4 text-yellow-500" />
-            <span className="font-semibold">{bounty.rewardAmount} ROXN</span>
+            <span className="font-semibold">
+              {bounty.rewardAmount} {bounty.rewardCurrency || "ROXN"}
+            </span>
             <span className="text-muted-foreground">
               {bounty.rewardType === "PER_SUBMISSION"
                 ? "per submission"

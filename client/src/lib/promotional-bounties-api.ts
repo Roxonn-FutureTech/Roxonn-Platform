@@ -11,6 +11,7 @@ export interface PromotionalBounty {
   promotionalChannels: string[];
   requiredDeliverable: string | null;
   rewardAmount: string;
+  rewardCurrency: "XDC" | "ROXN" | "USDC";
   rewardType: "PER_SUBMISSION" | "POOL" | "TIERED";
   maxSubmissions: number | null;
   totalRewardPool: string | null;
@@ -42,6 +43,7 @@ export interface CreateBountyInput {
   promotionalChannels: string[];
   requiredDeliverable: string;
   rewardAmount: string;
+  rewardCurrency?: "XDC" | "ROXN" | "USDC";
   rewardType?: "PER_SUBMISSION" | "POOL" | "TIERED";
   maxSubmissions?: number;
   totalRewardPool?: string;

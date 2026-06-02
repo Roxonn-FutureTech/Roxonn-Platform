@@ -300,6 +300,7 @@ router.post('/bounties', requireAuth, requireClient, csrfProtection, createBount
       promotionalChannels: validatedData.promotionalChannels || [],
       requiredDeliverable: validatedData.requiredDeliverable,
       rewardAmount: validatedData.rewardAmount,
+      rewardCurrency: validatedData.rewardCurrency,
       rewardType: validatedData.rewardType,
       maxSubmissions: validatedData.maxSubmissions,
       totalRewardPool: validatedData.totalRewardPool,
