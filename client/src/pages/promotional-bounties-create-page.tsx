@@ -19,6 +19,7 @@ const PROMOTIONAL_CHANNELS = [
   "LinkedIn",
   "Facebook",
   "Instagram",
+  "TikTok",
   "YouTube",
   "Blog",
   "Forum",

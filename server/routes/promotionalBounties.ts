@@ -12,6 +12,7 @@ import {
   type CreatePromotionalBountyInput,
   type CreatePromotionalSubmissionInput,
 } from '../../shared/schema';
+import { validateProofLinksForChannels } from '../../shared/promotionalUrlValidation';
 import { log } from '../utils';
 import rateLimit from 'express-rate-limit';
 
@@ -95,6 +96,25 @@ const transformSubmission = (submission: any) => {
     }
   }
   return submission;
+};
+
+const parseChannelList = (channels: unknown): string[] => {
+  if (Array.isArray(channels)) {
+    return channels.filter((channel): channel is string => typeof channel === 'string');
+  }
+
+  if (typeof channels === 'string') {
+    try {
+      const parsed = JSON.parse(channels);
+      return Array.isArray(parsed)
+        ? parsed.filter((channel): channel is string => typeof channel === 'string')
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
 };
 
 // Get user's registered repos
@@ -536,6 +556,15 @@ router.post('/submissions', requireAuth, requireDeveloper, csrfProtection, submi
       
       if (lockedBounty.expires_at && new Date(lockedBounty.expires_at) < new Date()) {
         throw new BusinessError('Bounty has expired', 400);
+      }
+
+      const promotionalChannels = parseChannelList(lockedBounty.promotional_channels);
+      const proofLinkValidation = validateProofLinksForChannels(
+        validatedData.proofLinks,
+        promotionalChannels
+      );
+      if (!proofLinkValidation.valid) {
+        throw new BusinessError(proofLinkValidation.message || 'Invalid proof link for selected channel', 400);
       }
       // Check for existing submission from this user
       const existingSubmission = await tx
