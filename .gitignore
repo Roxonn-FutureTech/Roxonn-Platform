@@ -68,3 +68,6 @@ server/certs/
 # Misc
 *.patch
 *.bak
+
+# GSD planning docs — local-only (public repo: do not publish infra/security audit)
+.planning/
