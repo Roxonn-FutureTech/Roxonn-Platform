@@ -1,4 +1,5 @@
 import api from "./api";
+import type { RewardCurrency } from "@shared/schema";
 
 export interface PromotionalBounty {
   id: number;
@@ -11,7 +12,7 @@ export interface PromotionalBounty {
   promotionalChannels: string[];
   requiredDeliverable: string | null;
   rewardAmount: string;
-  rewardCurrency: "XDC" | "ROXN" | "USDC";
+  rewardCurrency: RewardCurrency;
   rewardType: "PER_SUBMISSION" | "POOL" | "TIERED";
   maxSubmissions: number | null;
   totalRewardPool: string | null;
@@ -43,7 +44,7 @@ export interface CreateBountyInput {
   promotionalChannels: string[];
   requiredDeliverable: string;
   rewardAmount: string;
-  rewardCurrency?: "XDC" | "ROXN" | "USDC";
+  rewardCurrency?: RewardCurrency;
   rewardType?: "PER_SUBMISSION" | "POOL" | "TIERED";
   maxSubmissions?: number;
   totalRewardPool?: string;

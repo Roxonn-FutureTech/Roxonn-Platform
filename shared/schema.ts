@@ -2,6 +2,9 @@ import { pgTable, text, serial, boolean, timestamp, jsonb, integer, decimal } fr
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export const SUPPORTED_REWARD_CURRENCIES = ["XDC", "ROXN", "USDC"] as const;
+export type RewardCurrency = (typeof SUPPORTED_REWARD_CURRENCIES)[number];
+
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   githubId: text("github_id").notNull().unique(),
@@ -153,7 +156,7 @@ export const allocateUnifiedBountySchema = z.object({ // Renamed
         return parseFloat(val) > 0; 
       } catch (e) { return false; }
     }, { message: "Bounty amount must be a positive number" }),
-  currencyType: z.enum(['XDC', 'ROXN', 'USDC']), // Currency type: XDC, ROXN, or USDC
+  currencyType: z.enum(SUPPORTED_REWARD_CURRENCIES), // Currency type: XDC, ROXN, or USDC
   // Optional fields for notifications, consistent with original allocateRewardSchema
   githubRepoFullName: z.string().optional(),
   issueTitle: z.string().optional(),
@@ -324,7 +327,7 @@ export const multiCurrencyBounties = pgTable("multi_currency_bounties", {
   id: serial("id").primaryKey(),
   repoId: text("repo_id").notNull(),
   issueId: integer("issue_id").notNull(),
-  currencyType: text("currency_type", { enum: ["XDC", "ROXN", "USDC"] }).notNull(), // Changed from USDT to USDC
+  currencyType: text("currency_type", { enum: SUPPORTED_REWARD_CURRENCIES }).notNull(), // Changed from USDT to USDC
   network: text("network", { enum: ["xdc", "ethereum", "polygon", "bsc"] }).notNull(),
   amount: text("amount").notNull(),
   status: text("status", { enum: ["created", "allocated", "distributed", "cancelled"] }).default("created").notNull(),
@@ -538,7 +541,7 @@ export const promotionalBounties = pgTable("promotional_bounties", {
   promotionalChannels: jsonb("promotional_channels").notNull().default([]),
   requiredDeliverable: text("required_deliverable"),
   rewardAmount: decimal("reward_amount", { precision: 18, scale: 8 }).notNull(),
-  rewardCurrency: text("reward_currency", { enum: ["XDC", "ROXN", "USDC"] }).notNull().default("ROXN"),
+  rewardCurrency: text("reward_currency", { enum: SUPPORTED_REWARD_CURRENCIES }).notNull().default("ROXN"),
   rewardType: text("reward_type", { enum: ["PER_SUBMISSION", "POOL", "TIERED"] }).notNull().default("PER_SUBMISSION"),
   maxSubmissions: integer("max_submissions"),
   totalRewardPool: decimal("total_reward_pool", { precision: 18, scale: 8 }),
@@ -576,7 +579,7 @@ export const createPromotionalBountySchema = z.object({
   promotionalChannels: z.array(z.string()).min(1, "Select at least one channel"),
   requiredDeliverable: z.string().min(1, "Required deliverable is required"),
   rewardAmount: z.string().min(1, "Reward amount is required"),
-  rewardCurrency: z.enum(["XDC", "ROXN", "USDC"]).default("ROXN"),
+  rewardCurrency: z.enum(SUPPORTED_REWARD_CURRENCIES).default("ROXN"),
   rewardType: z.enum(["PER_SUBMISSION", "POOL", "TIERED"]).default("PER_SUBMISSION"),
   maxSubmissions: z.number().int().positive().optional(),
   totalRewardPool: z.string().optional(),

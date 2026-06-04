@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPromotionalBountySchema } from "../shared/schema";
+import { createPromotionalBountySchema, SUPPORTED_REWARD_CURRENCIES } from "../shared/schema";
 
 const validBounty = {
   repoId: 1,
@@ -20,7 +20,7 @@ describe("promotional bounty reward currency", () => {
   });
 
   it("accepts supported reward currencies", () => {
-    for (const rewardCurrency of ["XDC", "ROXN", "USDC"] as const) {
+    for (const rewardCurrency of SUPPORTED_REWARD_CURRENCIES) {
       const parsed = createPromotionalBountySchema.parse({
         ...validBounty,
         rewardCurrency,

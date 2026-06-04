@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { promotionalBountiesAPI, type CreateBountyInput } from "@/lib/promotional-bounties-api";
 import { ArrowLeft, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { SUPPORTED_REWARD_CURRENCIES, type RewardCurrency } from "@shared/schema";
 
 const PROMOTIONAL_CHANNELS = [
   "Twitter",
@@ -24,9 +25,6 @@ const PROMOTIONAL_CHANNELS = [
   "Forum",
   "Other",
 ];
-
-const REWARD_CURRENCIES = ["XDC", "ROXN", "USDC"] as const;
-type RewardCurrency = (typeof REWARD_CURRENCIES)[number];
 
 export default function PromotionalBountiesCreatePage() {
   const { user } = useAuth();
@@ -220,7 +218,7 @@ export default function PromotionalBountiesCreatePage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="rewardAmount">Reward Amount ({formData.rewardCurrency || "ROXN"}) *</Label>
+                <Label htmlFor="rewardAmount">Reward Amount ({formData.rewardCurrency}) *</Label>
                 <Input
                   id="rewardAmount"
                   type="number"
@@ -236,14 +234,14 @@ export default function PromotionalBountiesCreatePage() {
               <div className="space-y-2">
                 <Label htmlFor="rewardCurrency">Reward Currency *</Label>
                 <Select
-                  value={formData.rewardCurrency || "ROXN"}
+                  value={formData.rewardCurrency}
                   onValueChange={(value) => setFormData((prev) => ({ ...prev, rewardCurrency: value as RewardCurrency }))}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {REWARD_CURRENCIES.map((currency) => (
+                    {SUPPORTED_REWARD_CURRENCIES.map((currency) => (
                       <SelectItem key={currency} value={currency}>
                         {currency}
                       </SelectItem>
@@ -274,7 +272,7 @@ export default function PromotionalBountiesCreatePage() {
 
             {formData.rewardType === "POOL" && (
               <div className="space-y-2">
-                <Label htmlFor="totalRewardPool">Total Reward Pool ({formData.rewardCurrency || "ROXN"})</Label>
+                <Label htmlFor="totalRewardPool">Total Reward Pool ({formData.rewardCurrency})</Label>
                 <Input
                   id="totalRewardPool"
                   type="number"
