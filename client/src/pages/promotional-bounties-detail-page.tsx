@@ -160,7 +160,7 @@ export default function PromotionalBountiesDetailPage() {
                 </Badge>
                 <Badge variant="outline">
                   <Coins className="mr-1 h-3 w-3" />
-                  {bounty.rewardAmount} ROXN
+                  {bounty.rewardAmount} {bounty.rewardCurrency || "ROXN"}
                 </Badge>
               </div>
             </div>
@@ -250,6 +250,10 @@ export default function PromotionalBountiesDetailPage() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <p className="text-sm text-muted-foreground mb-1">Reward Currency</p>
+              <p className="font-semibold">{bounty.rewardCurrency || "ROXN"}</p>
+            </div>
             <div>
               <p className="text-sm text-muted-foreground mb-1">Reward Type</p>
               <p className="font-semibold">{bounty.rewardType.replace("_", " ")}</p>
