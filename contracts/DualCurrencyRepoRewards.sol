@@ -98,9 +98,12 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
     
     // NEW VARIABLES - APPENDED AT END TO PRESERVE STORAGE LAYOUT
     IERC20 public usdcToken; // USDC ERC20 token
-    mapping(uint256 => uint256) public repositoryUSDCPools; // repoId => USDC pool amount
+    // slot 13: dead mapping retained as a slot placeholder (never delete - deletion would shift
+    // issueCurrencyTypes/relayer down one slot). Annotated so validateUpgrade accepts the rename.
+    /// @custom:oz-renamed-from repositoryUSDCPools
+    mapping(uint256 => uint256) public __deprecated_repositoryUSDCPools; // (was repositoryUSDCPools) repoId => USDC pool amount - DEPRECATED, slot preserved
     mapping(uint256 => mapping(uint256 => uint8)) public issueCurrencyTypes; // repoId => issueId => currencyType
-    address public relayer; // Relayer address for community bounty completion
+    address public relayer; // Relayer address - KEEP (live storage slot 15; used by onlyRelayer/setRelayer)
 
     // Events
     event UserRegistered(address indexed user, string username, string role);
@@ -117,11 +120,11 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
     event UpgraderRemoved(address upgrader);
     event FeeParametersUpdated(address feeCollector, uint256 platformFeeRate, uint256 contributorFeeRate);
 
-    // Community Bounty events
-    event CommunityBountyCreated(string indexed repoGithubId, uint256 indexed issueNumber, uint256 bountyIndex, address indexed creator, uint256 amount, CurrencyType currency, uint256 expiresAt);
-    event CommunityBountyCompleted(string indexed repoGithubId, uint256 indexed issueNumber, uint256 bountyIndex, address indexed contributor, uint256 contributorPayout);
-    event CommunityBountyRefunded(string indexed repoGithubId, uint256 indexed issueNumber, uint256 bountyIndex, address indexed creator, uint256 refundAmount);
-    
+    // NOTE (CONTRACT-04 / DESIGN-01): the 3 CommunityBounty* events were removed along with the
+    // standalone embedded community-bounty functions (the canonical path is CommunityBountyEscrow).
+    // The CommunityBounty struct, BountyStatus enum, and the in-struct communityBounties mapping
+    // are KEPT byte-identical for storage-layout safety (validateUpgrade rejects their removal/retype).
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -152,6 +155,51 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
     /// @dev Can only be called once during upgrade to V2
     function initializeV2() public reinitializer(2) {
         __ReentrancyGuard_init();
+    }
+
+    /// @notice Reinitializer for V3 upgrade - backfills the O(1) membership/lookup maps (CONTRACT-01)
+    /// @dev Can only be called once during upgrade to V3. The new maps (isRepoPoolManager,
+    ///      isRepoContributor, usernameToWallet) are EMPTY for all pre-existing repos/users, so a
+    ///      naive map-only isPoolManager would lock out every existing manager. This backfills the
+    ///      maps from the KEPT poolManagers[]/contributors[] arrays + the global address arrays so
+    ///      every pre-existing manager/contributor/username still resolves post-upgrade (RC-7 / Risk #7).
+    function initializeV3() public reinitializer(3) {
+        // Backfill the username -> wallet map from the global pool-manager and contributor arrays.
+        uint256 pmLen = poolManagerAddresses.length;
+        for (uint i = 0; i < pmLen; i++) {
+            address pmAddr = poolManagerAddresses[i];
+            PoolManager storage pm = poolManagers[pmAddr];
+            if (bytes(pm.username).length > 0) {
+                usernameToWallet[keccak256(bytes(pm.username))] = pm.wallet;
+            }
+        }
+        uint256 cLen = contributorAddresses.length;
+        for (uint i = 0; i < cLen; i++) {
+            address cAddr = contributorAddresses[i];
+            Contributor storage c = contributors[cAddr];
+            if (bytes(c.username).length > 0) {
+                usernameToWallet[keccak256(bytes(c.username))] = c.wallet;
+            }
+        }
+    }
+
+    /// @notice Backfill the per-repo membership maps for a single repository (CONTRACT-01 backfill helper).
+    /// @dev initializeV3 cannot enumerate which repoIds exist (repositories is a mapping with no key set),
+    ///      so per-repo membership (isRepoPoolManager / isRepoContributor) is backfilled on demand by the
+    ///      owner/admin from the KEPT repo.poolManagers[]/repo.contributors[] arrays. Idempotent: re-running
+    ///      simply re-sets the same true flags. These bounded loops run ONCE per repo at backfill time over
+    ///      the same arrays getRepository already returns; they are NOT on any hot caller-facing path.
+    function backfillRepoMembership(uint256 repoId) external {
+        require(_msgSender() == admin || _msgSender() == owner(), "DualCurrencyRepoRewards: Not authorized to backfill");
+        Repository storage repo = repositories[repoId];
+        uint256 pmLen = repo.poolManagers.length;
+        for (uint i = 0; i < pmLen; i++) {
+            isRepoPoolManager[repoId][repo.poolManagers[i]] = true;
+        }
+        uint256 cLen = repo.contributors.length;
+        for (uint i = 0; i < cLen; i++) {
+            isRepoContributor[repoId][repo.contributors[i]] = true;
+        }
     }
 
     // _msgSender and isTrustedForwarder remain the same
@@ -188,18 +236,14 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
         _;
     }
 
-    // isPoolManager remains the same
+    // isPoolManager: O(1) membership check via isRepoPoolManager (CONTRACT-01).
+    // Replaces the former unbounded scan over repo.poolManagers[] (a gas-DoS on a live fund
+    // contract). Pre-existing repos are backfilled via initializeV3 / backfillRepoMembership.
     function isPoolManager(
         uint256 repoId,
         address manager
     ) internal view returns (bool) {
-        Repository storage repo = repositories[repoId];
-        for (uint i = 0; i < repo.poolManagers.length; i++) {
-            if (repo.poolManagers[i] == manager) {
-                return true;
-            }
-        }
-        return false;
+        return isRepoPoolManager[repoId][manager];
     }
 
     // registerUser remains the same
@@ -227,6 +271,10 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
             );
             contributorAddresses.push(userAddress);
         }
+        // Keep the O(1) username->wallet map in sync (CONTRACT-01).
+        if (bytes(username).length > 0) {
+            usernameToWallet[keccak256(bytes(username))] = userAddress;
+        }
         emit UserRegistered(userAddress, username, typeOfUser);
     }
 
@@ -246,6 +294,11 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
             poolManager
         );
         poolManagerAddresses.push(poolManager);
+        // Keep the O(1) maps in sync (CONTRACT-01).
+        isRepoPoolManager[repoId][poolManager] = true;
+        if (bytes(username).length > 0) {
+            usernameToWallet[keccak256(bytes(username))] = poolManager;
+        }
     }
 
     // Modified allocateIssueReward to support XDC, ROXN, and USDC
@@ -293,6 +346,7 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
         
         if (repo.poolManagers.length == 0) { // Auto-assign first funder as manager
             repositories[repoId].poolManagers.push(_msgSender());
+            isRepoPoolManager[repoId][_msgSender()] = true; // keep O(1) map in sync (CONTRACT-01)
         }
 
         uint256 fee = 0;
@@ -318,6 +372,7 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
         
         if (repo.poolManagers.length == 0) { // Auto-assign first funder as manager
              repositories[repoId].poolManagers.push(_msgSender());
+             isRepoPoolManager[repoId][_msgSender()] = true; // keep O(1) map in sync (CONTRACT-01)
         }
 
         uint256 fee = 0;
@@ -346,6 +401,7 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
         
         if (repo.poolManagers.length == 0) { // Auto-assign first funder as manager
              repositories[repoId].poolManagers.push(_msgSender());
+             isRepoPoolManager[repoId][_msgSender()] = true; // keep O(1) map in sync (CONTRACT-01)
         }
 
         uint256 fee = 0;
@@ -395,16 +451,11 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
              repo.issueCount--;
         }
 
-        // Add contributor if not already listed (original logic)
-        bool isExistingContributor = false;
-        for (uint i = 0; i < repo.contributors.length; i++) {
-            if (repo.contributors[i] == contributorAddress) {
-                isExistingContributor = true;
-                break;
-            }
-        }
-        if (!isExistingContributor) {
+        // Add contributor if not already listed - O(1) dedup via isRepoContributor (CONTRACT-01).
+        // Replaces the former unbounded scan over repo.contributors[].
+        if (!isRepoContributor[repoId][contributorAddress]) {
             repo.contributors.push(contributorAddress);
+            isRepoContributor[repoId][contributorAddress] = true;
         }
 
         uint256 commission = 0;
@@ -505,10 +556,12 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
         return contributors[_wallet];
     }
 
-    // Modified getRepository to return XDC, ROXN, and USDC pool rewards
-    // and include issue currency type.
-    // The issue listing part still needs a robust fix if issue IDs are not sequential.
-    // For now, returning empty issues to avoid reverts from bad loop, and returning original poolRewards as XDC.
+    /// @notice Returns a repository's pool managers, contributors, and per-currency pool rewards.
+    /// @dev The 6-tuple shape (incl. the `_issues` member) is RETAINED for ABI stability: exactly one
+    ///      off-chain decoder relies on this shape, and changing it would corrupt USDC pool readouts.
+    /// @dev `_issues` is PERMANENTLY EMPTY (always `new Issue[](0)`). Issue data is intentionally kept
+    ///      off-chain; query it via the canonical `getIssueRewards(repoId, uint256[] issueIds)` where the
+    ///      caller supplies the issue IDs from the off-chain DB. Do NOT rely on `_issues` for issue data.
     function getRepository(
         uint256 _repoId
     )
@@ -524,9 +577,8 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
         )
     {
         Repository storage repo = repositories[_repoId];
-        // TEMPORARY: Return empty issue array to prevent reverts from original loop logic.
-        // A robust solution needs a way to iterate known issue IDs.
-        Issue[] memory currentIssues = new Issue[](0); 
+        // _issues is permanently empty; query issue data via getIssueRewards(repoId, issueIds[]).
+        Issue[] memory currentIssues = new Issue[](0);
         
         return (
             repo.poolManagers,
@@ -563,31 +615,12 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
         }
     }
 
+    // O(1) username -> wallet lookup via usernameToWallet (CONTRACT-01).
+    // Replaces the former two unbounded scans over poolManagerAddresses[] and contributorAddresses[]
+    // (a gas-DoS on a live fund contract). The map is kept in sync at registerUser/addPoolManager and
+    // backfilled for pre-existing users by initializeV3. Returns address(0) when no match (unchanged ABI).
     function getUserWalletByUsername(string memory username) external view returns (address) {
-        // ... (original logic) ...
-        for (uint i = 0; i < poolManagerAddresses.length; i++) {
-            if (
-                keccak256(
-                    abi.encodePacked(
-                        poolManagers[poolManagerAddresses[i]].username
-                    )
-                ) == keccak256(abi.encodePacked(username))
-            ) {
-                return poolManagers[poolManagerAddresses[i]].wallet;
-            }
-        }
-        for (uint i = 0; i < contributorAddresses.length; i++) {
-            if (
-                keccak256(
-                    abi.encodePacked(
-                        contributors[contributorAddresses[i]].username
-                    )
-                ) == keccak256(abi.encodePacked(username))
-            ) {
-                return contributors[contributorAddresses[i]].wallet;
-            }
-        }
-        return address(0);
+        return usernameToWallet[keccak256(bytes(username))];
     }
 
     // Modified to return all three types of rewards
@@ -601,185 +634,16 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
         return repositories[_repoId].issueCount;
     }
 
-    // ==================== COMMUNITY BOUNTY FUNCTIONS ====================
-
-    /**
-     * @notice Create a community bounty for any GitHub issue (permissionless)
-     * @param repoGithubId Repository identifier (e.g., "repo-owner-name")
-     * @param issueNumber GitHub issue number
-     * @param amount Bounty amount in wei (for XDC) or token units (for ROXN/USDC)
-     * @param currency Currency type (0=XDC, 1=ROXN, 2=USDC)
-     * @param expiryDays Days until expiry (0 = no expiry)
-     */
-    function createCommunityBounty(
-        string memory repoGithubId,
-        uint256 issueNumber,
-        uint256 amount,
-        CurrencyType currency,
-        uint256 expiryDays
-    ) external payable nonReentrant {
-        require(amount > 0, "DualCurrencyRepoRewards: Amount must be positive");
-
-        // Calculate expiry timestamp
-        uint256 expiresAt = expiryDays > 0
-            ? block.timestamp + (expiryDays * 1 days)
-            : 0;
-
-        // Transfer funds to contract (escrow)
-        if (currency == CurrencyType.XDC) {
-            require(msg.value == amount, "DualCurrencyRepoRewards: Incorrect XDC amount");
-        } else if (currency == CurrencyType.ROXN) {
-            require(msg.value == 0, "DualCurrencyRepoRewards: Do not send XDC for ROXN bounty");
-            roxnToken.safeTransferFrom(_msgSender(), address(this), amount);
-        } else if (currency == CurrencyType.USDC) {
-            require(msg.value == 0, "DualCurrencyRepoRewards: Do not send XDC for USDC bounty");
-            usdcToken.safeTransferFrom(_msgSender(), address(this), amount);
-        }
-
-        // Create bounty record
-        CommunityBounty memory bounty = CommunityBounty({
-            creator: _msgSender(),
-            amount: amount,
-            currency: currency,
-            expiresAt: expiresAt,
-            status: BountyStatus.ACTIVE,
-            contributor: address(0),
-            completedAt: 0
-        });
-
-        // Add to repository's community bounties array for this issue
-        uint256 repoId = uint256(keccak256(abi.encodePacked(repoGithubId)));
-        repositories[repoId].communityBounties[issueNumber].push(bounty);
-
-        // Get bounty index (array length - 1)
-        uint256 bountyIndex = repositories[repoId].communityBounties[issueNumber].length - 1;
-
-        emit CommunityBountyCreated(repoGithubId, issueNumber, bountyIndex, _msgSender(), amount, currency, expiresAt);
-    }
-
-    /**
-     * @notice Complete a community bounty (relayer-only)
-     * @param repoGithubId Repository identifier
-     * @param issueNumber GitHub issue number
-     * @param bountyIndex Index of bounty in array (for multiple bounties on same issue)
-     * @param contributor Address to receive the bounty
-     */
-    function completeCommunityBounty(
-        string memory repoGithubId,
-        uint256 issueNumber,
-        uint256 bountyIndex,
-        address contributor
-    ) external onlyRelayer nonReentrant {
-        require(contributor != address(0), "DualCurrencyRepoRewards: Invalid contributor");
-
-        uint256 repoId = uint256(keccak256(abi.encodePacked(repoGithubId)));
-        CommunityBounty storage bounty = repositories[repoId].communityBounties[issueNumber][bountyIndex];
-
-        require(bounty.status == BountyStatus.ACTIVE, "DualCurrencyRepoRewards: Bounty not active");
-        require(bounty.expiresAt == 0 || block.timestamp <= bounty.expiresAt, "DualCurrencyRepoRewards: Bounty expired");
-
-        // Calculate fees
-        uint256 platformFee = (bounty.amount * platformFeeRate) / 10000;
-        uint256 contributorFee = (bounty.amount * contributorFeeRate) / 10000;
-        uint256 totalFees = platformFee + contributorFee;
-        uint256 contributorPayout = bounty.amount - totalFees;
-
-        // Update bounty status
-        bounty.status = BountyStatus.COMPLETED;
-        bounty.contributor = contributor;
-        bounty.completedAt = block.timestamp;
-
-        // Transfer funds
-        if (bounty.currency == CurrencyType.XDC) {
-            if (totalFees > 0 && feeCollector != address(0)) {
-                (bool feeSuccess, ) = feeCollector.call{value: totalFees}("");
-                require(feeSuccess, "DualCurrencyRepoRewards: Failed to send XDC fee");
-            }
-            (bool success, ) = payable(contributor).call{value: contributorPayout}("");
-            require(success, "DualCurrencyRepoRewards: Failed to send XDC to contributor");
-        } else if (bounty.currency == CurrencyType.ROXN) {
-            if (totalFees > 0 && feeCollector != address(0)) {
-                roxnToken.safeTransfer(feeCollector, totalFees);
-            }
-            roxnToken.safeTransfer(contributor, contributorPayout);
-        } else if (bounty.currency == CurrencyType.USDC) {
-            if (totalFees > 0 && feeCollector != address(0)) {
-                usdcToken.safeTransfer(feeCollector, totalFees);
-            }
-            usdcToken.safeTransfer(contributor, contributorPayout);
-        }
-
-        emit CommunityBountyCompleted(repoGithubId, issueNumber, bountyIndex, contributor, contributorPayout);
-    }
-
-    /**
-     * @notice Refund an expired community bounty
-     * @param repoGithubId Repository identifier
-     * @param issueNumber GitHub issue number
-     * @param bountyIndex Index of bounty in array
-     */
-    function refundCommunityBounty(
-        string memory repoGithubId,
-        uint256 issueNumber,
-        uint256 bountyIndex
-    ) external nonReentrant {
-        uint256 repoId = uint256(keccak256(abi.encodePacked(repoGithubId)));
-        CommunityBounty storage bounty = repositories[repoId].communityBounties[issueNumber][bountyIndex];
-
-        require(_msgSender() == bounty.creator, "DualCurrencyRepoRewards: Only creator can refund");
-        require(bounty.status == BountyStatus.ACTIVE, "DualCurrencyRepoRewards: Bounty not active");
-        require(bounty.expiresAt > 0 && block.timestamp > bounty.expiresAt, "DualCurrencyRepoRewards: Bounty not expired");
-
-        uint256 refundAmount = bounty.amount;
-        bounty.status = BountyStatus.REFUNDED;
-
-        // Return funds to creator
-        if (bounty.currency == CurrencyType.XDC) {
-            (bool success, ) = payable(bounty.creator).call{value: refundAmount}("");
-            require(success, "DualCurrencyRepoRewards: Failed to refund XDC");
-        } else if (bounty.currency == CurrencyType.ROXN) {
-            roxnToken.safeTransfer(bounty.creator, refundAmount);
-        } else if (bounty.currency == CurrencyType.USDC) {
-            usdcToken.safeTransfer(bounty.creator, refundAmount);
-        }
-
-        emit CommunityBountyRefunded(repoGithubId, issueNumber, bountyIndex, bounty.creator, refundAmount);
-    }
-
-    /**
-     * @notice Get all community bounties for a specific issue
-     * @param repoGithubId Repository identifier
-     * @param issueNumber GitHub issue number
-     * @return Array of community bounties
-     */
-    function getCommunityBounties(
-        string memory repoGithubId,
-        uint256 issueNumber
-    ) external view returns (CommunityBounty[] memory) {
-        uint256 repoId = uint256(keccak256(abi.encodePacked(repoGithubId)));
-        return repositories[repoId].communityBounties[issueNumber];
-    }
-
-    /**
-     * @notice Get count of active community bounties for an issue
-     * @param repoGithubId Repository identifier
-     * @param issueNumber GitHub issue number
-     * @return Count of active bounties
-     */
-    function getActiveCommunityBountyCount(
-        string memory repoGithubId,
-        uint256 issueNumber
-    ) external view returns (uint256) {
-        uint256 repoId = uint256(keccak256(abi.encodePacked(repoGithubId)));
-        CommunityBounty[] memory bounties = repositories[repoId].communityBounties[issueNumber];
-        uint256 count = 0;
-        for (uint256 i = 0; i < bounties.length; i++) {
-            if (bounties[i].status == BountyStatus.ACTIVE) {
-                count++;
-            }
-        }
-        return count;
-    }
+    // ==================== COMMUNITY BOUNTY FUNCTIONS REMOVED (CONTRACT-04 / DESIGN-01) ====================
+    // The 5 standalone embedded community-bounty functions
+    // (createCommunityBounty / completeCommunityBounty / refundCommunityBounty /
+    //  getCommunityBounties / getActiveCommunityBountyCount) and their 3 events were REMOVED.
+    // The canonical community-bounty path is the standalone CommunityBountyEscrow contract.
+    // STORAGE-SAFETY: the CommunityBounty struct, BountyStatus enum, and the in-struct
+    // communityBounties mapping member are KEPT byte-identical (validateUpgrade rejects deleting/
+    // retyping the in-struct mapping or its value-type chain). Removing FUNCTIONS shifts no slot.
+    // The owner-only reclaimUnaccountedXDC fund-recovery sweep below is NOT a community-bounty
+    // function and is RETAINED verbatim (the contract holds live XDC; this is the only recovery path).
 
     /**
      * @dev Allows the owner to reclaim all XDC balance held by this contract.
@@ -796,6 +660,20 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
             require(success, "DualCurrencyRepoRewards: Failed to send XDC");
         }
     }
-    
-    uint256[46] private __gap; // Adjusted gap: reduced by 1 for relayer address state variable
+
+    // STORAGE-LAYOUT NOTE (CONTRACT-05):
+    // __gap MUST stay the field at slot 16 (its original start) and MUST still END at slot 61
+    // so the OpenZeppelin validateUpgrade "shrinkgap" rule (endMatchesGap) accepts the change.
+    // It was uint256[46] (slots 16..61). We shrink it by 3 (the count of the O(1) membership/
+    // lookup maps appended immediately AFTER the gap) to uint256[43] (slots 16..58); the 3 new
+    // maps then occupy slots 59, 60, 61. Total reserved across __gap + appended maps stays 62.
+    // DO NOT move the maps before __gap and DO NOT change the count without re-deriving this math.
+    uint256[43] private __gap; // Adjusted gap: was [46]; reduced by 3 for the O(1) maps appended below (still ends at slot 61; total reserved 62)
+
+    // NEW VARIABLES - APPENDED AFTER __gap TO PRESERVE STORAGE LAYOUT (CONTRACT-01)
+    // O(1) membership / lookup maps replacing the former unbounded array scans.
+    // Appended AFTER the shrunken __gap (see note above) so validateUpgrade accepts the gap shrink.
+    mapping(uint256 => mapping(address => bool)) public isRepoPoolManager; // repoId => manager => is pool manager
+    mapping(uint256 => mapping(address => bool)) public isRepoContributor; // repoId => contributor => is contributor
+    mapping(bytes32 => address) public usernameToWallet;                   // keccak256(bytes(username)) => wallet
 }
