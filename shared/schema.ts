@@ -805,6 +805,16 @@ export const payouts = pgTable("payouts", {
 export type Payout = typeof payouts.$inferSelect;
 export type NewPayout = typeof payouts.$inferInsert;
 
+// --- Platform Flags Table (OPS-01: Runtime kill-switches) ---
+export const platformFlags = pgTable("platform_flags", {
+  key: text("key").primaryKey(),
+  value: boolean("value").notNull().default(false),
+  updatedAt: timestamp("updated_at", { mode: 'date', withTimezone: true }).defaultNow().notNull(),
+});
+
+export type PlatformFlag = typeof platformFlags.$inferSelect;
+export type NewPlatformFlag = typeof platformFlags.$inferInsert;
+
 // --- Bounty Attempts Table (Track who's working on bounties) ---
 /*
  * WHY THIS TABLE:
