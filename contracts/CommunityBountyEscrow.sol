@@ -139,6 +139,11 @@ contract CommunityBountyEscrow is
     /// @notice Next bounty ID (auto-increment)
     uint256 public nextBountyId;
 
+    /// @notice Reserved storage gap for future upgrades (slots 8-57).
+    /// WHY: Preserves storage-layout safety for UUPS upgrades. When adding new
+    /// state, DECREMENT this array - never append past it.
+    uint256[50] private __gap;
+
     // ============================================================================
     // EVENTS
     // ============================================================================
@@ -212,6 +217,11 @@ contract CommunityBountyEscrow is
      * - Initializer is called once after deployment via proxy
      * - initializer modifier prevents re-initialization attacks
      */
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
     function initialize(
         address _roxnToken,
         address _usdcToken,
@@ -379,8 +389,14 @@ contract CommunityBountyEscrow is
         // Transfer funds
         if (bounty.currency == CurrencyType.XDC) {
             // Native XDC transfers
-            payable(contributor).transfer(netAmount);
-            payable(feeCollector).transfer(platformFee + contributorFee);
+            // WHY .call vs .transfer: .transfer caps gas at 2300, which bricks
+            // contract/multisig recipients. .call forwards remaining gas. CEI is
+            // preserved (status COMPLETED set above) + nonReentrant, so the
+            // relaxed stipend stays reentrancy-safe.
+            (bool okContributor, ) = payable(contributor).call{value: netAmount}("");
+            require(okContributor, "XDC payout to contributor failed");
+            (bool okFeeCollector, ) = payable(feeCollector).call{value: platformFee + contributorFee}("");
+            require(okFeeCollector, "XDC payout to feeCollector failed");
         } else if (bounty.currency == CurrencyType.ROXN) {
             // ROXN ERC20 transfers
             roxnToken.safeTransfer(contributor, netAmount);
@@ -440,7 +456,11 @@ contract CommunityBountyEscrow is
 
         // Refund full amount (no fees on refund)
         if (bounty.currency == CurrencyType.XDC) {
-            payable(bounty.creator).transfer(bounty.amount);
+            // WHY .call vs .transfer: .transfer caps gas at 2300, which bricks
+            // contract/multisig creators. CEI is preserved (status REFUNDED set
+            // above) + nonReentrant, so the relaxed stipend stays reentrancy-safe.
+            (bool okRefund, ) = payable(bounty.creator).call{value: bounty.amount}("");
+            require(okRefund, "XDC refund failed");
         } else if (bounty.currency == CurrencyType.ROXN) {
             roxnToken.safeTransfer(bounty.creator, bounty.amount);
         } else if (bounty.currency == CurrencyType.USDC) {
@@ -494,6 +514,16 @@ contract CommunityBountyEscrow is
         );
         platformFeeRate = newPlatformFeeRate;
         contributorFeeRate = newContributorFeeRate;
+    }
+
+    /**
+     * @notice Disabled - ownership of this live fund-holding escrow can never be renounced
+     * @dev Overrides OwnableUpgradeable.renounceOwnership() to always revert.
+     * WHY: Accidental renounce on a live fund contract is irreversible and would
+     * permanently strip upgrade/admin authority.
+     */
+    function renounceOwnership() public override onlyOwner {
+        revert("Renounce disabled");
     }
 
     // ============================================================================
