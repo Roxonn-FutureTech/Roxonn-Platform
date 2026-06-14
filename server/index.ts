@@ -32,7 +32,7 @@ import { config, initializeConfig, validateConfig } from './config';
 import rateLimit from 'express-rate-limit';
 import { updateOfflineNodes } from './services/exoNodeService';
 import { verifyAndSecureContainers } from './azure-media';
-import { startCommunityBountyRelayer } from './communityBountyRelayer';
+import { startCommunityBountyRelayer, sweepPendingInstallationBounties } from './communityBountyRelayer';
 
 // Initialize the app but don't start it yet
 const app = express();
@@ -567,6 +567,19 @@ async function startServer() {
     if (FEATURE_FLAGS.COMMUNITY_RELAYER_ENABLED) {
       startCommunityBountyRelayer();
       log('Community bounty relayer started', 'relayer');
+
+      // FUND-03: recovery sweep for bounties stuck in 'pending_installation'.
+      // Re-resolves the GitHub App installation id (registered_repositories → App-JWT) and
+      // restores resolved bounties to 'claimed' so the main relayer scan re-picks them; demotes
+      // to 'expired' after a max-attempt TTL. Gated by the SAME feature flag here, and per-cycle
+      // by storage.getRelayerEnabled() (kill-switch) inside sweepPendingInstallationBounties.
+      sweepPendingInstallationBounties().catch((error: any) => {
+        log(`Error in initial pending-installation sweep: ${error.message}`, 'relayer-ERROR');
+      });
+      setInterval(async () => {
+        await sweepPendingInstallationBounties();
+      }, 5 * 60 * 1000);
+      log('Pending-installation recovery sweep scheduled', 'relayer');
     } else {
       log('Community bounty relayer is DISABLED (FEATURE_COMMUNITY_RELAYER_ENABLED not set to true)', 'relayer');
     }

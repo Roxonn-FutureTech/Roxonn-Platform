@@ -33,8 +33,47 @@
 import { storage, recordPayoutWithRetry } from './storage';
 import { buildCommunityPayoutRow } from './utils/payoutMapper';
 import { blockchain } from './blockchain';
-import { verifyPRMergedAndClosesIssue } from './github';
+import { verifyPRMergedAndClosesIssue, resolveInstallationIdForRepo } from './github';
 import { log } from './utils';
+
+/**
+ * FUND-03: max resolution attempts before a pending_installation bounty is TTL-demoted to 'expired'.
+ * Each sweep cycle counts as one attempt (tracked in metadata.installationResolveAttempts).
+ */
+const MAX_INSTALLATION_RESOLVE_ATTEMPTS = 10;
+
+/**
+ * FUND-03 resolution ladder: resolve a bounty's GitHub App installation id WITHOUT throwing.
+ *   (a) the value already stored on the bounty (bounty.githubInstallationId);
+ *   (b) the registered_repositories row for `${owner}/${repo}`;
+ *   (c) the App-JWT fallback (resolveInstallationIdForRepo).
+ * Returns the resolved id (string) or null. Persistence is the caller's responsibility.
+ */
+async function resolveBountyInstallationId(bounty: any): Promise<string | null> {
+  // (a) already captured on the bounty
+  if (bounty.githubInstallationId) {
+    return bounty.githubInstallationId;
+  }
+
+  const owner = bounty.githubRepoOwner;
+  const repo = bounty.githubRepoName;
+  if (!owner || !repo) {
+    return null;
+  }
+
+  // (b) registered_repositories by full_name
+  try {
+    const registration = await storage.findRepositoryByFullName(`${owner}/${repo}`);
+    if (registration && registration.installationId) {
+      return registration.installationId;
+    }
+  } catch (regErr: any) {
+    log(`registered_repositories lookup failed for ${owner}/${repo}: ${regErr.message}`, 'relayer-ERROR');
+  }
+
+  // (c) App-JWT fallback (best-effort, null on 404/failure)
+  return await resolveInstallationIdForRepo(owner, repo);
+}
 
 /**
  * Process a single claimed bounty
@@ -91,17 +130,25 @@ async function processClaimedBounty(bountyId: number): Promise<void> {
     // WHY: Ensure PR was actually merged before paying out bounty
     log(`Verifying PR #${bounty.claimedPrNumber} merged and closes issue #${bounty.githubIssueNumber} in ${bounty.githubRepoOwner}/${bounty.githubRepoName}`, 'relayer');
 
-    // WHY INSTALLATION ID: Community bounties may be on unregistered repos
-    // We need to get installation ID for the repo to use GitHub App auth
-    // For now, we'll assume the repo has our GitHub App installed
-    // TODO: Add installation ID lookup or store it during bounty creation
-    const installationId = bounty.githubInstallationId;
+    // WHY INSTALLATION ID: Community bounties may be on unregistered repos.
+    // FUND-03: resolve via a ladder — stored value → registered_repositories → App-JWT fallback.
+    // A missing installation id is RECOVERABLE: route to 'pending_installation' (NOT terminal
+    // 'failed_verification') so the gated sweep re-attempts resolution. This is distinct from a
+    // genuine merge-verification failure below, which remains terminal 'failed_verification'.
+    const installationId = await resolveBountyInstallationId(bounty);
     if (!installationId) {
-      log(`Bounty ${bountyId} missing GitHub installation ID. Cannot verify PR.`, 'relayer-ERROR');
+      log(`Bounty ${bountyId} has no resolvable GitHub installation id. Routing to pending_installation for sweep retry.`, 'relayer');
       await storage.updateCommunityBounty(bountyId, {
-        status: 'failed_verification'
+        status: 'pending_installation'
       });
       return;
+    }
+
+    // FUND-03: persist a freshly-resolved installation id so the sweep/next cycle skips the lookup.
+    if (installationId !== bounty.githubInstallationId) {
+      await storage.updateCommunityBounty(bountyId, {
+        githubInstallationId: installationId
+      });
     }
 
     const verification = await verifyPRMergedAndClosesIssue(
@@ -252,6 +299,92 @@ export async function processClaimedBounties(): Promise<void> {
   } catch (error: any) {
     // SEC-03: log only error.message (no full error object dump)
     log(`Error in community bounty relayer cycle: ${error.message}`, 'relayer-ERROR');
+    // Don't throw - let the interval continue
+  }
+}
+
+/**
+ * FUND-03 RECOVERY SWEEP — re-resolve bounties stuck in 'pending_installation'.
+ *
+ * WHY: A bounty whose installation id could not be resolved at verification time is parked in
+ * the recoverable 'pending_installation' state instead of terminal 'failed_verification'. This
+ * sweep re-attempts the resolution ladder (registered_repositories → App-JWT) each cycle.
+ *
+ * ON RESOLUTION (FIX 10): persist the installation id AND restore the bounty to 'claimed' — the
+ * exact status getClaimedCommunityBounties()/processClaimedBounties() scans — so the very next
+ * relayer cycle re-picks it and drives the payout. A resolved bounty MUST land back in the
+ * scanned 'claimed' state, never a non-scanned limbo.
+ *
+ * TTL: after MAX_INSTALLATION_RESOLVE_ATTEMPTS unresolved attempts, demote to terminal 'expired'
+ * (defunct/uninstalled repos hold no on-chain funds — no bounty stalls forever).
+ *
+ * GATING: per-cycle kill-switch via storage.getRelayerEnabled() (identical to processClaimedBounties);
+ * the interval itself is wired behind FEATURE_FLAGS.COMMUNITY_RELAYER_ENABLED in server/index.ts.
+ */
+export async function sweepPendingInstallationBounties(): Promise<void> {
+  // Per-cycle kill-switch — fail-safe: any read error treats relayer as DISABLED
+  let isEnabled = false;
+  try {
+    isEnabled = await storage.getRelayerEnabled();
+  } catch (flagErr: any) {
+    log(`Kill-switch flag read failed: ${flagErr.message}. Treating relayer as DISABLED.`, 'relayer-ERROR');
+    return;
+  }
+  if (!isEnabled) {
+    log('Community bounty relayer is DISABLED via kill-switch. Skipping pending-installation sweep.', 'relayer');
+    return;
+  }
+
+  try {
+    const pending = await storage.getBountiesPendingInstallation();
+    if (pending.length === 0) {
+      log('No pending_installation bounties to sweep', 'relayer');
+      return;
+    }
+
+    log(`Sweeping ${pending.length} pending_installation bounties`, 'relayer');
+
+    for (const bounty of pending) {
+      try {
+        const installationId = await resolveBountyInstallationId(bounty);
+
+        if (installationId) {
+          // RESOLVED → persist id + restore to 'claimed' so the main relayer scan re-picks it
+          await storage.updateCommunityBounty(bounty.id, {
+            githubInstallationId: installationId,
+            status: 'claimed',
+          });
+          log(`Bounty ${bounty.id} installation id resolved by sweep; restored to claimed for relayer re-pickup`, 'relayer');
+          continue;
+        }
+
+        // UNRESOLVED → increment attempt counter; TTL-demote to expired past the cap
+        const existingMeta = (bounty.metadata && typeof bounty.metadata === 'object') ? bounty.metadata : {};
+        const attempts = (Number(existingMeta.installationResolveAttempts) || 0) + 1;
+
+        if (attempts >= MAX_INSTALLATION_RESOLVE_ATTEMPTS) {
+          await storage.updateCommunityBounty(bounty.id, {
+            status: 'expired',
+          });
+          log(`Bounty ${bounty.id} unresolved after ${attempts} attempts; TTL-demoted to expired`, 'relayer');
+        } else {
+          await storage.updateCommunityBounty(bounty.id, {
+            metadata: { ...existingMeta, installationResolveAttempts: attempts },
+          } as any);
+          log(`Bounty ${bounty.id} still unresolved (attempt ${attempts}/${MAX_INSTALLATION_RESOLVE_ATTEMPTS}); will retry next sweep`, 'relayer');
+        }
+      } catch (perBountyErr: any) {
+        log(`Error sweeping pending_installation bounty ${bounty.id}: ${perBountyErr.message}`, 'relayer-ERROR');
+        // continue with the rest of the sweep
+      }
+
+      // Rate-limit between bounties (GitHub App API)
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    log(`Pending-installation sweep complete. Examined ${pending.length} bounties.`, 'relayer');
+  } catch (error: any) {
+    log(`Error in pending-installation sweep: ${error.message}`, 'relayer-ERROR');
     // Don't throw - let the interval continue
   }
 }
