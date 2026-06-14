@@ -112,8 +112,8 @@ async function processClaimedBounty(bountyId: number): Promise<void> {
       installationId
     );
 
-    // WHY LOG VERIFICATION RESULT: Audit trail for all verification attempts
-    log(`Verification result for bounty ${bountyId}: ${JSON.stringify(verification)}`, 'relayer');
+    // WHY LOG VERIFICATION RESULT: Audit trail for all verification attempts (SEC-03: scalar fields only)
+    log(`Verification result for bounty ${bountyId}: verified=${verification.verified}, error=${verification.error ?? 'none'}`, 'relayer');
 
     if (!verification.verified) {
       log(`Bounty ${bountyId} verification failed: ${verification.error}`, 'relayer-ERROR');
@@ -175,8 +175,8 @@ async function processClaimedBounty(bountyId: number): Promise<void> {
 
   } catch (error: any) {
     // WHY LOG ERROR BUT DON'T THROW: Allow other bounties to be processed
+    // SEC-03: log only error.message (no full error object dump)
     log(`Error processing bounty ${bountyId}: ${error.message}`, 'relayer-ERROR');
-    console.error(`Full error for bounty ${bountyId}:`, error);
 
     // WHY KEEP STATUS AS CLAIMED: Will be retried next cycle
     // Don't update DB on error - let it retry
@@ -209,6 +209,20 @@ async function processClaimedBounty(bountyId: number): Promise<void> {
  * - Claimed bounties are rare enough that sequential is fine
  */
 export async function processClaimedBounties(): Promise<void> {
+  // OPS-01: Per-cycle kill-switch — re-checked every cycle, no restart needed (D-16)
+  // Fail-safe: any read error treats relayer as DISABLED
+  let isEnabled = false;
+  try {
+    isEnabled = await storage.getRelayerEnabled();
+  } catch (flagErr: any) {
+    log(`Kill-switch flag read failed: ${flagErr.message}. Treating relayer as DISABLED.`, 'relayer-ERROR');
+    return;
+  }
+  if (!isEnabled) {
+    log('Community bounty relayer is DISABLED via kill-switch. Skipping cycle.', 'relayer');
+    return;
+  }
+
   try {
     log('Starting community bounty relayer cycle', 'relayer');
 
@@ -236,8 +250,8 @@ export async function processClaimedBounties(): Promise<void> {
     log(`Community bounty relayer cycle complete. Processed ${claimedBounties.length} bounties.`, 'relayer');
 
   } catch (error: any) {
+    // SEC-03: log only error.message (no full error object dump)
     log(`Error in community bounty relayer cycle: ${error.message}`, 'relayer-ERROR');
-    console.error('Full relayer error:', error);
     // Don't throw - let the interval continue
   }
 }
