@@ -1251,10 +1251,23 @@ export class DatabaseStorage implements IStorage {
 
       log(`Payout recorded: repo=${payout.repositoryGithubId}, issue=${payout.issueNumber}, tx=${payout.txHash}`, 'payout');
       return result;
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('unique constraint')) {
-        log(`Payout already exists (idempotency): repo=${payout.repositoryGithubId}, issue=${payout.issueNumber}`, 'payout');
-        throw new Error('Payout already recorded for this issue');
+    } catch (error: any) {
+      // Distinguish WHICH unique constraint fired so the caller can tell a benign retry
+      // (same tx_hash already recorded) from a potential double-pay (same repo/issue paid
+      // under a DIFFERENT tx). The raw Postgres message names the constraint; postgres.js
+      // also sets error.code='23505' and error.constraint_name.
+      const isUnique = error?.code === '23505' ||
+        (error instanceof Error && error.message.includes('unique constraint'));
+      if (isUnique) {
+        const detail = `${error?.constraint_name || ''} ${error instanceof Error ? error.message : ''}`;
+        if (/tx_hash/.test(detail)) {
+          log(`Payout already exists (tx_hash idempotency): repo=${payout.repositoryGithubId}, issue=${payout.issueNumber}`, 'payout');
+          throw new Error('Payout already recorded (tx_hash idempotency)');
+        }
+        // Non-tx_hash unique conflict (e.g. uq_payouts_repo_issue): the same issue was already
+        // paid under a different tx — surface as a possible double-pay, do NOT mask as idempotency.
+        log(`Payout conflict on non-tx_hash unique constraint (possible double-pay): repo=${payout.repositoryGithubId}, issue=${payout.issueNumber}, tx=${payout.txHash}`, 'storage-ERROR');
+        throw new Error('Payout conflict: repo/issue already recorded under a different tx (possible double-pay)');
       }
       log(`Error recording payout: ${error instanceof Error ? error.message : String(error)}`, 'storage-ERROR');
       throw error;
@@ -1648,14 +1661,30 @@ export async function recordPayoutWithRetry(payoutData: NewPayout, maxAttempts =
       await storage.recordPayout(payoutData);
       return;
     } catch (err: any) {
-      // Idempotency hit — not a failure; the row already exists
-      if (err.message?.includes('unique constraint') || err.message?.includes('Payout already recorded')) {
-        log(`[PAYOUT-LEDGER-FAILURE] Payout already recorded (idempotency guard fired) tx=${payoutData.txHash}`, 'payout');
+      const msg = err?.message || '';
+      // True idempotency — this exact on-chain tx is already in the ledger (a retried webhook
+      // or a reconciliation re-run). Expected and benign; never re-send. (Logged under a benign
+      // tag so it does NOT trip [PAYOUT-LEDGER-FAILURE]-keyed alerting.)
+      if (msg.includes('tx_hash idempotency')) {
+        log(`[PAYOUT-IDEMPOTENT] tx already recorded — skipping (no re-send) tx=${payoutData.txHash}`, 'payout');
+        return;
+      }
+      // Possible DOUBLE-PAY — a non-tx_hash unique constraint blocked the row (the same repo/issue
+      // is already paid under a different tx). Funds may have moved twice. Alert loudly; do NOT
+      // re-throw (the blockchain tx already succeeded — re-throwing cannot un-send it).
+      if (msg.includes('possible double-pay')) {
+        log(`[PAYOUT-DOUBLE-PAY?] non-tx_hash unique conflict repo=${payoutData.repositoryGithubId} issue=#${payoutData.issueNumber} tx=${payoutData.txHash}`, 'payout-ERROR');
+        await sendLedgerFailureAlert({
+          txHash: payoutData.txHash ?? 'unknown',
+          repoId: payoutData.repositoryGithubId,
+          issueNumber: payoutData.issueNumber,
+          error: 'Possible double-pay: repo/issue already recorded under a different tx_hash. Manual review required.',
+        }).catch((alertErr: any) => log(`SES alert also failed: ${alertErr.message}`, 'payout-ERROR'));
         return;
       }
       if (attempt < maxAttempts) {
         const delay = attempt * 200; // 200ms then 400ms
-        log(`[PAYOUT-LEDGER-FAILURE] Attempt ${attempt} failed: ${err.message}. Retrying in ${delay}ms`, 'payout');
+        log(`[PAYOUT-LEDGER-RETRY] Attempt ${attempt} failed: ${err.message}. Retrying in ${delay}ms`, 'payout');
         await new Promise(r => setTimeout(r, delay));
       } else {
         // Exhausted retries — alert + structured log, do NOT re-throw

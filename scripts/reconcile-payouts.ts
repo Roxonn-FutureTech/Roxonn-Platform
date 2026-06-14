@@ -619,17 +619,30 @@ async function main() {
 
   // Guard: verify the DB-01 unique index exists before proceeding (T-02-24)
   // The uq_payouts_tx_hash unique constraint is required for onConflictDoNothing to resolve.
-  console.log('Checking for DB-01 unique index on payouts.tx_hash...');
+  console.log('Checking for DB-01 UNIQUE index on payouts.tx_hash...');
+  // Match a UNIQUE single-column index on tx_hash specifically — NOT any index whose name
+  // contains "tx_hash". The stale non-unique idx_payouts_tx_hash (migration 0022) would satisfy
+  // a `LIKE '%tx_hash%'` name match and false-pass this guard in exactly the pre-0026 state the
+  // guard exists to catch; onConflictDoNothing then fails loud with Postgres 42P10. Check
+  // indisunique=true on a single column named tx_hash instead (and ignore the constraint name,
+  // so a Drizzle-pushed `payouts_tx_hash_unique` is also accepted).
   const indexCheck = await db.execute(sql`
-    SELECT indexname FROM pg_indexes
-    WHERE tablename = 'payouts' AND indexname LIKE '%tx_hash%'
+    SELECT 1
+    FROM pg_index i
+    JOIN pg_class t ON t.oid = i.indrelid
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(i.indkey)
+    WHERE t.relname = 'payouts'
+      AND i.indisunique = true
+      AND i.indnatts = 1
+      AND a.attname = 'tx_hash'
   `);
-
-  if ((indexCheck as any).rows?.length === 0 || (Array.isArray(indexCheck) && indexCheck.length === 0)) {
+  const indexRows = Array.isArray(indexCheck) ? indexCheck : ((indexCheck as any).rows ?? []);
+  if (indexRows.length === 0) {
     throw new Error(
-      'DB-01 index not yet applied. Run the DB-01 migration first:\n' +
+      'DB-01 UNIQUE index on payouts.tx_hash not found. Run the DB-01 migration first:\n' +
       '  psql "$DATABASE_URL" -f migrations/0026_add_payouts_tx_hash_unique.sql\n' +
-      'This unique index is required for onConflictDoNothing to correctly identify duplicates.'
+      'A UNIQUE constraint (not the legacy non-unique idx_payouts_tx_hash) is required for\n' +
+      'onConflictDoNothing({ target: payouts.txHash }) to correctly identify duplicates.'
     );
   }
   console.log('  DB-01 unique index found — proceeding with upsert.');

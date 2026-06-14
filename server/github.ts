@@ -1350,13 +1350,15 @@ export async function handleIssueClosed(payload: WebhookPayload, installationId:
               // sourceIssue.pull_request.merged_at path); the only additional corroboration this
               // fallback needs is a "closes/fixes/resolves #<issueNumber>" reference in title/body.
               // Without it we cannot be sure this PR closed the issue — refuse and alert, never guess.
-              const closingKeywords = ['closes', 'fixes', 'resolves', 'close', 'fix', 'resolve'];
-              const prBody = (sourceIssue?.body || '').toLowerCase();
-              const prTitle = (sourceIssue?.title || '').toLowerCase();
-              const hasClosingRef = closingKeywords.some(kw =>
-                prBody.includes(`${kw} #${issueNumber}`) ||
-                prTitle.includes(`${kw} #${issueNumber}`)
-              );
+              // Anchor the match on a trailing non-digit boundary `(?!\d)` so that closing
+              // issue #5 is NOT falsely corroborated by a PR that says "closes #50" — a naive
+              // substring match ("closes #5".includes in "closes #50") would pay the WRONG
+              // contributor, defeating FUND-01. Use GitHub's full closing-keyword set.
+              const closingKeywords = ['close', 'closes', 'closed', 'fix', 'fixes', 'fixed', 'resolve', 'resolves', 'resolved'];
+              const closingRefRegex = new RegExp(`\\b(${closingKeywords.join('|')})\\s*:?\\s+#${issueNumber}(?!\\d)`, 'i');
+              const hasClosingRef =
+                closingRefRegex.test(sourceIssue?.body || '') ||
+                closingRefRegex.test(sourceIssue?.title || '');
 
               if (!hasClosingRef) {
                 log(`❌ Cross-reference fallback: PR #${prNumber} by ${prAuthor} (merged) has no verified 'closes #${issueNumber}' keyword in title/body. Refusing payout.`, 'webhook-issue');
