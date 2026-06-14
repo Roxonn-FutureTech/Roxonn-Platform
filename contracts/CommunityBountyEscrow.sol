@@ -85,8 +85,11 @@ contract CommunityBountyEscrow is
      * WHY these states:
      * - ACTIVE: Funds in escrow, bounty claimable
      * - COMPLETED: Payout executed, issue resolved
-     * - REFUNDED: Creator reclaimed funds (expired or cancelled)
-     * - CANCELLED: Bounty cancelled before funding
+     * - REFUNDED: Creator reclaimed funds after expiry
+     * - CANCELLED: Reserved enum index, never assigned by this contract.
+     *   Retained byte-identical for storage-layout safety (removing a trailing
+     *   enum member fails the OZ validateUpgrade gate). Creator reclaim is
+     *   handled by REFUNDED via refundBounty(); there is no cancelBounty path.
      */
     enum BountyStatus { ACTIVE, COMPLETED, REFUNDED, CANCELLED }
 
@@ -306,15 +309,22 @@ contract CommunityBountyEscrow is
 
         // Transfer funds to escrow
         if (currency == CurrencyType.XDC) {
-            // Native XDC payment
+            // Native XDC payment (exact, no transfer fee)
             require(msg.value == amount, "XDC amount mismatch");
         } else if (currency == CurrencyType.ROXN) {
             // ROXN ERC20 transfer
             // WHY: User must approve() this contract first
+            // WHY balanceOf-delta: record tokens ACTUALLY received so a
+            // fee-on-transfer token can never over-credit the escrowed amount.
+            uint256 balBefore = roxnToken.balanceOf(address(this));
             roxnToken.safeTransferFrom(msg.sender, address(this), amount);
+            amount = roxnToken.balanceOf(address(this)) - balBefore;
         } else if (currency == CurrencyType.USDC) {
             // USDC ERC20 transfer
+            // WHY balanceOf-delta: record tokens ACTUALLY received (fee-on-transfer safe)
+            uint256 balBefore = usdcToken.balanceOf(address(this));
             usdcToken.safeTransferFrom(msg.sender, address(this), amount);
+            amount = usdcToken.balanceOf(address(this)) - balBefore;
         }
 
         // Store bounty

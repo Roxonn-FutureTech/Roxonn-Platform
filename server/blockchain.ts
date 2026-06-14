@@ -116,7 +116,7 @@ interface CommunityBountyEscrowContract extends ethers.Contract {
         amount: bigint;
         currency: number;
         expiresAt: bigint;
-        status: number; // 0=ACTIVE, 1=COMPLETED, 2=REFUNDED, 3=CANCELLED
+        status: number; // 0=ACTIVE, 1=COMPLETED, 2=REFUNDED, 3=CANCELLED (3 is a reserved on-chain enum index never assigned by this contract; creator reclaim uses REFUNDED)
     }>;
 
     isBountyClaimable(bountyId: number): Promise<boolean>;
