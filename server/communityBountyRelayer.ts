@@ -30,7 +30,8 @@
  * - Rate limiting to prevent API abuse
  */
 
-import { storage } from './storage';
+import { storage, recordPayoutWithRetry } from './storage';
+import { buildCommunityPayoutRow } from './utils/payoutMapper';
 import { blockchain } from './blockchain';
 import { verifyPRMergedAndClosesIssue } from './github';
 import { log } from './utils';
@@ -144,33 +145,22 @@ async function processClaimedBounty(bountyId: number): Promise<void> {
 
     log(`Bounty ${bountyId} completed on-chain. TX: ${result.txHash}, Block: ${result.blockNumber}`, 'relayer');
 
-    // STEP 5: Record payout for idempotency tracking
+    // STEP 5: Record payout for idempotency tracking (FUND-04)
     // WHY: Prevents duplicate payouts in community bounties system
     // NOTE: This is separate from pool bounty payouts (which are tracked in github.ts)
-    try {
-      const fees = storage.calculateBountyFees(parseFloat(bounty.baseBountyAmount || bounty.amount));
-
-      await storage.recordPayout({
-        repositoryGithubId: `community-${bounty.githubRepoOwner}-${bounty.githubRepoName}`,
-        issueNumber: bounty.githubIssueNumber,
-        contributorGithubUsername: bounty.claimedByGithubUsername!,
-        contributorUserId: bounty.claimedByUserId!,
-        contributorWalletAddress: contributor.xdcWalletAddress,
-        baseBountyAmount: fees.baseBountyAmount.toString(),
-        clientFeeAmount: fees.clientFeeAmount.toString(),
-        contributorFeeAmount: fees.contributorFeeAmount.toString(),
-        totalPlatformFee: fees.totalPlatformFee.toString(),
-        contributorPayout: fees.contributorPayout.toString(),
-        currency: bounty.currency,
-        transactionHash: result.txHash,
-        poolManagerId: null, // Community bounties don't have pool managers
-        status: 'completed',
-      });
-      log(`Payout recorded for community bounty ${bountyId}`, 'relayer');
-    } catch (payoutError: any) {
-      log(`Warning: Failed to record payout for bounty ${bountyId}: ${payoutError.message}`, 'relayer');
-      // Continue even if payout recording fails - the blockchain transaction succeeded
-    }
+    // D-12: pay-then-record — blockchain tx completed above; recordPayoutWithRetry never re-throws
+    await recordPayoutWithRetry(buildCommunityPayoutRow({
+      repositoryGithubId: `community-${bounty.githubRepoOwner}-${bounty.githubRepoName}`,
+      issueNumber: bounty.githubIssueNumber,
+      recipientGithubUsername: bounty.claimedByGithubUsername!,
+      recipientUserId: bounty.claimedByUserId ?? null,
+      recipientWalletAddress: contributor.xdcWalletAddress,
+      baseBountyAmount: parseFloat(bounty.baseBountyAmount || bounty.amount),
+      currency: bounty.currency,
+      txHash: result.txHash,
+      blockNumber: result.blockNumber ?? null,
+      communityBountyId: bounty.id,
+    }));
 
     // STEP 6: Update DB with completion details
     // WHY: Keep DB in sync with blockchain state
