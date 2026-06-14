@@ -831,7 +831,7 @@ export class DatabaseStorage implements IStorage {
     try {
       log(`Creating community bounty for issue #${data.githubIssueNumber} in ${data.githubRepoOwner}/${data.githubRepoName}`, 'storage');
 
-      // Calculate fees for the bounty (5% split fee model)
+      // Calculate fees for the bounty (1% split fee model: 0.5% client + 0.5% contributor)
       const fees = this.calculateBountyFees(parseFloat(data.amount));
 
       const [bounty] = await db.insert(communityBounties).values({
@@ -1350,7 +1350,10 @@ export class DatabaseStorage implements IStorage {
    * Calculate fee breakdown for bounty amount
    * Returns base amount + all fee components
    *
-   * Fee Model: 5% total (2.5% client + 2.5% contributor)
+   * Fee Model: on-chain-aligned 1% total (0.5% client + 0.5% contributor).
+   * The rate is sourced from config (PLATFORM_FEE_RATE / CONTRIBUTOR_FEE_RATE,
+   * default 50 bps each) so it matches the live CommunityBountyEscrow on-chain
+   * rate (platformFeeRate=50 + contributorFeeRate=50 bps). D-14 / Phase-3 D-08.
    */
   calculateBountyFees(baseBountyAmount: number): {
     baseBountyAmount: number;
@@ -1362,8 +1365,8 @@ export class DatabaseStorage implements IStorage {
   } {
     const roundTo8 = (num: number) => Math.round(num * 100000000) / 100000000;
 
-    const clientFee = roundTo8(baseBountyAmount * 0.025);
-    const contributorFee = roundTo8(baseBountyAmount * 0.025);
+    const clientFee = roundTo8(baseBountyAmount * (config.platformFeeRate / 10000));
+    const contributorFee = roundTo8(baseBountyAmount * (config.contributorFeeRate / 10000));
     const totalFee = roundTo8(clientFee + contributorFee);
     const totalPaid = roundTo8(baseBountyAmount + clientFee);
     const payout = roundTo8(baseBountyAmount - contributorFee);
