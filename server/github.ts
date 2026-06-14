@@ -11,6 +11,7 @@ import { ethers } from 'ethers';
 import { createAppAuth } from "@octokit/auth-app";
 import type { IssueBountyDetails } from "@shared/schema";
 import { buildPoolPayoutRow } from './utils/payoutMapper';
+import { resolveClosingContributor } from './utils/contributorResolution';
 import { sendRefusedPayoutAlert } from './email';
 
 // Comment out old webhooks instance
@@ -1224,167 +1225,30 @@ export async function handleIssueClosed(payload: WebhookPayload, installationId:
     return; // Don't proceed if we can't check the bounty
   }
 
-  // 4. Find Closing Contributor
-  let closingPRAuthor: string | null = null;
-  let closingPRNumber: number | null = null;
+  // 4. Find Closing Contributor (thin wrapper — D-05 / DEBT-01)
+  // Decision tree is extracted to server/utils/contributorResolution.ts so it can be
+  // unit-tested in isolation. The early dup-guard (step 2.5) and the pay-then-record
+  // ordering (steps 7-8) remain here, unchanged.
+  const resolutionResult = await resolveClosingContributor(payload, {
+    installationId,
+    repoId,
+    issueNumber,
+    webhookOwner,
+    webhookRepo,
+  });
 
-  // CRITICAL FIX: Use issue.closed_by from webhook payload (most reliable)
-  if (payload.issue?.closed_by?.login) {
-    const closedByUser = payload.issue.closed_by.login;
-
-    // Skip bot accounts
-    if (!closedByUser.endsWith('[bot]')) {
-      closingPRAuthor = closedByUser;
-      log(`✅ Using issue.closed_by from webhook payload: ${closingPRAuthor}`, 'webhook-issue');
-
-      // Try to get PR number from issue body or timeline (optional enhancement)
-      // For now, we have the correct contributor
-    } else {
-      log(`⚠️ issue.closed_by is a bot (${closedByUser}), will check timeline instead`, 'webhook-issue');
-    }
-  } else {
-    log(`⚠️ No issue.closed_by in webhook payload, will search timeline`, 'webhook-issue');
+  if (resolutionResult.status === 'refused') {
+    // sendRefusedPayoutAlert already fired inside the module; nothing more to do.
+    return;
   }
 
-  // FALLBACK: If no closed_by or it was a bot, search timeline
-  if (!closingPRAuthor) {
-    try {
-      // --- Generate Installation Token ---
-      const installationToken = await getInstallationAccessToken(installationId);
-      if (!installationToken) {
-        log(`Webhook Error: Could not get installation token for installId ${installationId}. Cannot fetch timeline.`, 'webhook-issue');
-        return; // Cannot proceed without token
-      }
-      const installationApiHeaders = getGitHubApiHeaders(installationToken);
-    // --- Use Installation Token for API Call (using validated webhook owner/repo) ---
-    const timelineUrl = buildSafeGitHubUrl('/repos/{owner}/{repo}/issues/{issueNumber}/timeline', {
-      owner: webhookOwner,
-      repo: webhookRepo,
-      issueNumber: String(issueNumber)
-    });
-    log(`Fetching timeline: ${timelineUrl}`, 'webhook-issue');
-
-    let timelineEvents: any[] = [];
-    let page = 1;
-    let hasNextPage = true;
-
-    while (hasNextPage) {
-      log(`Fetching timeline page ${page}...`, 'webhook-issue');
-      const timelineResponse = await axios.get(timelineUrl, {
-        headers: installationApiHeaders,
-        params: { per_page: 100, page: page }
-      });
-
-      const events = timelineResponse.data || [];
-      timelineEvents = timelineEvents.concat(events);
-
-      // Check for Link header to see if there are more pages
-      const linkHeader = timelineResponse.headers['link'];
-      if (linkHeader && linkHeader.includes('rel="next"')) {
-        page++;
-      } else {
-        hasNextPage = false;
-      }
-
-      // Safety break to prevent infinite loops (e.g. max 10 pages / 1000 events)
-      if (page > 10) {
-        log(`Reached max pagination limit (10 pages) for issue #${issueNumber}. Stopping.`, 'webhook-issue');
-        hasNextPage = false;
-      }
-    }
-
-      log(`Timeline received total ${timelineEvents.length} events. Searching for MOST RECENT closed event...`, 'webhook-issue');
-
-      // NEW APPROACH: Find the MOST RECENT 'closed' event to get the actual closing PR
-      let closedEvent = null;
-      for (let i = timelineEvents.length - 1; i >= 0; i--) {
-        const event = timelineEvents[i];
-        if (event.event === 'closed' && event.commit_id) {
-          closedEvent = event;
-          log(`[Timeline] Found most recent 'closed' event at index ${i}, commit: ${event.commit_id}, actor: ${event.actor?.login}`, 'webhook-issue');
-          break;
-        }
-      }
-
-      if (closedEvent) {
-        // The actor who performed the close action
-        const closeActor = closedEvent.actor?.login;
-
-        // Skip bot accounts
-        if (closeActor && !closeActor.endsWith('[bot]')) {
-          closingPRAuthor = closeActor;
-          log(`✅ Found contributor via 'closed' event: ${closingPRAuthor}`, 'webhook-issue');
-        } else {
-          log(`⚠️ 'closed' event actor is bot or missing: ${closeActor}`, 'webhook-issue');
-        }
-      }
-
-      // FALLBACK: Search cross-referenced PRs (OLD BUGGY METHOD - only as last resort)
-      if (!closingPRAuthor) {
-        log(`⚠️ Falling back to cross-reference search (less reliable)...`, 'webhook-issue');
-
-        for (let i = timelineEvents.length - 1; i >= 0; i--) {
-          const event = timelineEvents[i];
-
-          // Check if this is a cross-reference event triggered by the contributor's PR
-          if (event.event === 'cross-referenced' && event.actor?.login && event.source?.type === 'issue') {
-            const sourceIssue = event.source.issue; // This object represents the PR
-            const prNumber = sourceIssue?.number;
-            const mergedAt = sourceIssue?.pull_request?.merged_at;
-            const isMerged = sourceIssue?.state === 'closed' && mergedAt != null;
-
-            log(`[Timeline Event ${i}] Cross-ref PR #${prNumber}, merged=${isMerged}, author=${sourceIssue?.user?.login}`, 'webhook-issue');
-
-            if (isMerged) {
-              // Use PR author from source, not event actor (which could be a bot commenting)
-              const prAuthor = sourceIssue?.user?.login;
-
-              // Skip bot accounts (they end with [bot])
-              if (!prAuthor || prAuthor.endsWith('[bot]')) {
-                log(`[Timeline Event ${i}] Skipping bot or missing PR author: ${prAuthor}`, 'webhook-issue');
-                continue;
-              }
-
-              // FUND-01: Require a corroborating closing keyword before trusting cross-ref fallback.
-              // The enclosing `if (isMerged)` already guarantees a merged PR (via the correct
-              // sourceIssue.pull_request.merged_at path); the only additional corroboration this
-              // fallback needs is a "closes/fixes/resolves #<issueNumber>" reference in title/body.
-              // Without it we cannot be sure this PR closed the issue — refuse and alert, never guess.
-              // Anchor the match on a trailing non-digit boundary `(?!\d)` so that closing
-              // issue #5 is NOT falsely corroborated by a PR that says "closes #50" — a naive
-              // substring match ("closes #5".includes in "closes #50") would pay the WRONG
-              // contributor, defeating FUND-01. Use GitHub's full closing-keyword set.
-              const closingKeywords = ['close', 'closes', 'closed', 'fix', 'fixes', 'fixed', 'resolve', 'resolves', 'resolved'];
-              const closingRefRegex = new RegExp(`\\b(${closingKeywords.join('|')})\\s*:?\\s+#${issueNumber}(?!\\d)`, 'i');
-              const hasClosingRef =
-                closingRefRegex.test(sourceIssue?.body || '') ||
-                closingRefRegex.test(sourceIssue?.title || '');
-
-              if (!hasClosingRef) {
-                log(`❌ Cross-reference fallback: PR #${prNumber} by ${prAuthor} (merged) has no verified 'closes #${issueNumber}' keyword in title/body. Refusing payout.`, 'webhook-issue');
-                await sendRefusedPayoutAlert({ repoId: String(repoId), issueNumber, candidatePR: prNumber, candidateAuthor: prAuthor });
-                return; // payout stays unpaid; human does manual payout
-              }
-
-              closingPRAuthor = prAuthor;
-              closingPRNumber = prNumber;
-              log(`✅ Cross-reference fallback corroborated: PR #${prNumber} by ${prAuthor} has closing keyword for #${issueNumber}.`, 'webhook-issue');
-              break; // Stop searching
-            }
-          }
-        }
-      }
-
-      if (!closingPRAuthor) {
-        log(`❌ Could not find contributor in timeline for issue #${issueNumber}. Cannot determine who to pay.`, 'webhook-issue');
-        return;
-      }
-
-    } catch (timelineError: any) {
-      log(`Error fetching timeline for issue #${issueNumber}: ${timelineError.message}`, 'webhook-issue');
-      return;
-    }
+  if (resolutionResult.status === 'not_found') {
+    log(`❌ Could not find contributor in timeline for issue #${issueNumber}. Cannot determine who to pay.`, 'webhook-issue');
+    return;
   }
+
+  const closingPRAuthor: string = resolutionResult.login;
+  const closingPRNumber: number | null = resolutionResult.prNumber;
 
   // 5. Get Contributor Details from DB
   log(`🔍 Looking up contributor: ${closingPRAuthor}${closingPRNumber ? ` (PR #${closingPRNumber})` : ''}`, 'webhook-issue');
