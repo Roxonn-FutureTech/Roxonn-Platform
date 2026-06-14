@@ -17,7 +17,6 @@ import {
   handlePullRequestMergedForAutoPayout,
   postGitHubComment,
 } from '../github';
-import { processMergedPullRequestForCommunityBounties } from './communityBountyWebhookHandlers';
 
 const router = Router();
 
@@ -134,21 +133,13 @@ async function handleGitHubAppWebhook(req: Request, res: Response) {
     } else if (event === 'pull_request' && payload.action === 'closed' && payload.pull_request?.merged === true) {
       log(`Processing merged PR #${payload.pull_request?.number} in ${payload.repository?.full_name}`, 'webhook-app');
       setImmediate(() => {
-        // Process pool bounties (existing flow)
+        // FUND-03 / FIX 11: handlePullRequestMergedForAutoPayout is the SINGLE canonical
+        // merged-PR claim+capture path. It already performs the full community-bounty
+        // claim+capture (issue-bounty check, status='claimed', claimCommunityBountyAtomic).
+        // The former chained path-2 community-bounty webhook call was a
+        // redundant, build-broken duplicate and has been removed; the now-orphaned
+        // communityBountyWebhookHandlers.ts is slated for Phase 5 (INFLIGHT-03) deletion.
         handlePullRequestMergedForAutoPayout(payload, installationId)
-          .then(() => {
-            // Also process community bounties (new auto-claim flow)
-            return processMergedPullRequestForCommunityBounties({
-              prNumber: payload.pull_request.number,
-              prAuthor: payload.pull_request.user.login,
-              prAuthorId: String(payload.pull_request.user.id),
-              prBody: payload.pull_request.body || '',
-              repoOwner: payload.repository.owner.login,
-              repoName: payload.repository.name,
-              repoFullName: payload.repository.full_name,
-              installationId
-            });
-          })
           .then(() => storage.markWebhookDeliveryCompleted(delivery))
           .catch(err => {
             log(`Error in PR merge handler: ${err?.message || err}`, 'webhook-app');
