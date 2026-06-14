@@ -235,6 +235,56 @@ export async function getInstallationAccessToken(installationId: string): Promis
   }
 }
 
+/**
+ * FUND-03 fallback resolver: resolve a repo's GitHub App installation id WITHOUT a user OAuth token.
+ *
+ * Uses an APP-level JWT (auth({type:'app'}) — NOT an installation token) to call
+ * GET /repos/{owner}/{repo}/installation, which returns the installation that has the App
+ * installed on that repo. Used by background/funding/sweep contexts where no user token exists.
+ *
+ * Best-effort by contract: returns the installation id as a string, or null on any failure
+ * (missing App creds, 404 for a defunct/uninstalled repo, network error). NEVER throws to the
+ * caller — a funded payment must never be aborted because this lookup failed.
+ */
+export async function resolveInstallationIdForRepo(owner: string, repo: string): Promise<string | null> {
+  if (!config.githubAppId || !config.githubAppPrivateKey || !owner || !repo) {
+    log('Cannot resolve installation id: missing GitHub App credentials or owner/repo.', 'github-auth');
+    return null;
+  }
+  try {
+    // App-level auth (no installationId) → mint a short-lived App JWT.
+    const auth = createAppAuth({
+      appId: config.githubAppId,
+      privateKey: config.githubAppPrivateKey,
+    });
+    const appAuthentication = await auth({ type: 'app' });
+    const jwt = appAuthentication.token;
+
+    const response = await axios.get<{ id: number }>(
+      `${GITHUB_API_BASE}/repos/${owner}/${repo}/installation`,
+      {
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          'Authorization': `Bearer ${jwt}`,
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      }
+    );
+
+    const installationId = response.data?.id;
+    if (installationId == null) {
+      log(`No installation id in response for ${owner}/${repo}.`, 'github-auth');
+      return null;
+    }
+    log(`Resolved installation id for ${owner}/${repo} via App JWT.`, 'github-auth');
+    return installationId.toString();
+  } catch (error: any) {
+    // 404 (App not installed / defunct repo) and any other failure → null, never throw.
+    log(`Could not resolve installation id for ${owner}/${repo}: ${error.message}`, 'github-auth');
+    return null;
+  }
+}
+
 export async function getOrgRepos(req: Request, res: Response) {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -2521,8 +2571,10 @@ However, you need to sign up on Roxonn to receive the bounty payment.
         );
 
         // Mark bounty as pending claim
+        // FUND-03: capture the installation id forward at claim time (it is a param here)
         await storage.updateCommunityBounty(bounty.id, {
           status: 'claimed',
+          githubInstallationId: installationId,
           claimedByGithubUsername: prAuthor,
           claimedPrNumber: prNumber,
           claimedPrUrl: prUrl,
@@ -2554,8 +2606,10 @@ However, you need to connect an XDC wallet to receive the bounty payment.
         );
 
         // Mark bounty as pending claim
+        // FUND-03: capture the installation id forward at claim time (it is a param here)
         await storage.updateCommunityBounty(bounty.id, {
           status: 'claimed',
+          githubInstallationId: installationId,
           claimedByUserId: contributor.id,
           claimedByGithubUsername: prAuthor,
           claimedPrNumber: prNumber,
@@ -2577,6 +2631,15 @@ However, you need to connect an XDC wallet to receive the bounty payment.
           prNumber,
           prUrl
         );
+
+        // FUND-03: persist the installation id forward right after the atomic claim
+        // (the atomic helper has a fixed signature; this is the canonical capture-forward point
+        // so the relayer never has to fall back to an App-JWT lookup for claimed bounties).
+        if (installationId) {
+          await storage.updateCommunityBounty(bounty.id, {
+            githubInstallationId: installationId,
+          });
+        }
 
         log(`Bounty ${bounty.id} claimed atomically, relayer will complete payout`, 'auto-payout');
 

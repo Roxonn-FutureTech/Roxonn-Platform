@@ -30,6 +30,7 @@ import { Router, type Request, Response } from 'express';
 import { requireAuth, csrfProtection, requireClient, requireDeveloper } from '../auth';
 import { storage } from '../storage';
 import { blockchain } from '../blockchain';
+import { resolveInstallationIdForRepo } from '../github';
 import { log, sanitizeUserInput } from '../utils';
 import rateLimit from 'express-rate-limit';
 import { ZodError } from 'zod';
@@ -306,6 +307,19 @@ router.post(
         throw new BusinessError('Unsupported currency', 400);
       }
 
+      // FUND-03: best-effort capture of the GitHub App installation id at funding time.
+      // This is the exact step the 12 stuck bounties never reached. Wrapped in try/catch and
+      // NEVER allowed to abort a funded payment — on lookup failure the installation id is
+      // backfilled later at claim time or by sweepPendingInstallationBounties. Use the in-scope
+      // bounty object fields (bounty.githubRepoOwner / bounty.githubRepoName), NOT bare owner/repo.
+      let resolvedInstallationId: string | null = null;
+      try {
+        resolvedInstallationId = await resolveInstallationIdForRepo(bounty.githubRepoOwner, bounty.githubRepoName);
+      } catch (installLookupErr: any) {
+        log(`Installation-id lookup failed at funding for bounty ${bountyId} (non-fatal): ${installLookupErr.message}`, 'community-bounties');
+        resolvedInstallationId = null;
+      }
+
       // Update bounty status in DB with comprehensive transaction data
       const updatedBounty = await storage.updateCommunityBounty(bountyId, {
         status: 'funded',
@@ -314,6 +328,8 @@ router.post(
         escrowTxHash: result.tx.hash,
         escrowDepositedAt: new Date(),
         blockchainBountyId: result.bountyId,
+        // FUND-03: capture-forward (null is a valid no-op; backfilled later if unresolved)
+        ...(resolvedInstallationId ? { githubInstallationId: resolvedInstallationId } : {}),
         // CRITICAL-4 FIX: Store blockchain confirmation data
         escrowBlockNumber: (result.receipt as any)?.blockNumber || null,
       });
