@@ -3,13 +3,15 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { config } from './config';
 import { blockchain } from './blockchain';
-import { storage } from './storage';
+import { storage, recordPayoutWithRetry } from './storage';
 import { log, sanitizeUserInput, sanitizeGitHubIssue } from './utils';
 import { Webhooks } from "@octokit/webhooks";
 import { ethers } from 'ethers';
 // Import Octokit App Auth
 import { createAppAuth } from "@octokit/auth-app";
 import type { IssueBountyDetails } from "@shared/schema";
+import { buildPoolPayoutRow } from './utils/payoutMapper';
+import { sendRefusedPayoutAlert } from './email';
 
 // Comment out old webhooks instance
 /*
@@ -1178,7 +1180,7 @@ export async function handleIssueClosed(payload: WebhookPayload, installationId:
   // 2.5. CRITICAL: Check Payout Idempotency EARLY (before any expensive operations)
   const existingPayout = await storage.getPayoutByRepoAndIssue(String(repoId), issueNumber);
   if (existingPayout) {
-    log(`✅ Payout already processed for repo ${repoId} issue #${issueNumber}. TX: ${existingPayout.transactionHash}. Skipping duplicate.`, 'webhook-issue');
+    log(`✅ Payout already processed for repo ${repoId} issue #${issueNumber}. TX: ${existingPayout.txHash}. Skipping duplicate.`, 'webhook-issue');
     return;
   }
 
@@ -1343,9 +1345,26 @@ export async function handleIssueClosed(payload: WebhookPayload, installationId:
                 continue;
               }
 
+              // FUND-01: Require a corroborating closing keyword before trusting cross-ref fallback.
+              // Without "closes/fixes/resolves #<issueNumber>" in title or body AND a merged PR,
+              // we cannot be sure this PR closed the issue — refuse and alert instead of guessing.
+              const closingKeywords = ['closes', 'fixes', 'resolves', 'close', 'fix', 'resolve'];
+              const prBody = (sourceIssue?.body || '').toLowerCase();
+              const prTitle = (sourceIssue?.title || '').toLowerCase();
+              const hasClosingRef = closingKeywords.some(kw =>
+                prBody.includes(`${kw} #${issueNumber}`) ||
+                prTitle.includes(`${kw} #${issueNumber}`)
+              );
+
+              if (!hasClosingRef || !sourceIssue?.merged_at) {
+                log(`❌ Cross-reference fallback: PR #${prNumber} by ${prAuthor} has no verified 'closes #${issueNumber}' keyword or is not merged. Refusing payout.`, 'webhook-issue');
+                await sendRefusedPayoutAlert({ repoId: String(repoId), issueNumber, candidatePR: prNumber, candidateAuthor: prAuthor });
+                return; // payout stays unpaid; human does manual payout
+              }
+
               closingPRAuthor = prAuthor;
               closingPRNumber = prNumber;
-              log(`⚠️ Found contributor '${closingPRAuthor}' via PR #${prNumber} (cross-reference fallback - may be incorrect!)`, 'webhook-issue');
+              log(`✅ Cross-reference fallback corroborated: PR #${prNumber} by ${prAuthor} has closing keyword for #${issueNumber}.`, 'webhook-issue');
               break; // Stop searching
             }
           }
@@ -1380,7 +1399,8 @@ export async function handleIssueClosed(payload: WebhookPayload, installationId:
   }
   log(`✅ Found pool manager: ${poolManager.id} (${poolManager.username})`, 'webhook-issue');
 
-  // 7. Distribute Reward
+  // 7. Distribute Reward (D-12: pay-then-record order — blockchain tx FIRST)
+  let distributionResult: any = null;
   try {
     log(`💰 Attempting distribution for issue #${issueNumber}${closingPRNumber ? ` (PR #${closingPRNumber})` : ''}`, 'webhook-issue');
     log(`   Contributor: ${closingPRAuthor}`, 'webhook-issue');
@@ -1388,41 +1408,38 @@ export async function handleIssueClosed(payload: WebhookPayload, installationId:
     log(`   Amount: ${amountStr} ${currency}`, 'webhook-issue');
 
     // USE REPOSITORY-SPECIFIC issueNumber FOR BLOCKCHAIN CALLS
-    const result = await blockchain.distributeReward(
+    distributionResult = await blockchain.distributeReward(
       repoId,
       issueNumber,
       contributor.xdcWalletAddress,
       poolManager.id
     );
-    log(`✅ Distribution successful for issue #${issueNumber}. TX: ${result?.hash || 'N/A'}`, 'webhook-issue');
-
-    // Record the payout to prevent duplicate processing
-    // Note: This records the POOL bounty payout. The fee breakdown will be calculated by the relayer.
-    // For now, we record base amounts from the blockchain.
-    if (result?.hash && amountStr) {
-      const baseBountyAmount = parseFloat(amountStr);
-      const fees = storage.calculateBountyFees(baseBountyAmount);
-
-      await storage.recordPayout({
-        repositoryGithubId: String(repoId),
-        issueNumber: issueNumber,
-        contributorGithubUsername: closingPRAuthor,
-        contributorUserId: contributor.id,
-        contributorWalletAddress: contributor.xdcWalletAddress,
-        baseBountyAmount: fees.baseBountyAmount.toString(),
-        clientFeeAmount: fees.clientFeeAmount.toString(),
-        contributorFeeAmount: fees.contributorFeeAmount.toString(),
-        totalPlatformFee: fees.totalPlatformFee.toString(),
-        contributorPayout: fees.contributorPayout.toString(),
-        currency: currency,
-        transactionHash: result.hash,
-        poolManagerId: poolManager.id,
-        status: 'completed',
-      });
-      log(`Payout recorded for repo ${repoId} issue #${issueNumber}`, 'webhook-issue');
-    }
+    log(`✅ Distribution successful for issue #${issueNumber}. TX: ${distributionResult?.hash || 'N/A'}`, 'webhook-issue');
   } catch (distributionError: any) {
     log(`Error distributing reward for issue #${issueNumber}: ${distributionError.message}`, 'webhook-issue');
+    return; // distribution failed — do not attempt to record
+  }
+
+  // 8. Record payout in its OWN try-catch AFTER the distribution try-catch closes (FUND-04).
+  // A ledger-write failure must NOT re-send funds. recordPayoutWithRetry handles retries+alert
+  // without re-throwing (D-10). The distributeReward call above has already completed.
+  if (distributionResult?.hash && amountStr) {
+    const baseBountyAmount = parseFloat(amountStr);
+    // FUND-04: use the tested buildPoolPayoutRow mapper (D-08 key-remap at the call site).
+    // poolManagerAddress = poolManager.xdcWalletAddress (wallet string), NOT poolManager.id (int).
+    await recordPayoutWithRetry(buildPoolPayoutRow({
+      repositoryGithubId: String(repoId),
+      issueNumber: issueNumber,
+      recipientGithubUsername: closingPRAuthor,
+      recipientUserId: contributor.id,
+      recipientWalletAddress: contributor.xdcWalletAddress,
+      baseBountyAmount: baseBountyAmount,
+      currency: currency,
+      txHash: distributionResult.hash,
+      blockNumber: distributionResult.blockNumber ?? null,
+      poolManagerAddress: poolManager.xdcWalletAddress ?? null,
+    }));
+    log(`Payout ledger row submitted for repo ${repoId} issue #${issueNumber}`, 'webhook-issue');
   }
 }
 
