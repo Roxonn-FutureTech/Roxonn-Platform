@@ -270,11 +270,11 @@ export async function processClaimedBounties(): Promise<void> {
  * - Slow enough to avoid rate limits
  * - Good balance between responsiveness and resource usage
  *
- * @param intervalMs - Interval in milliseconds (default: 30000 = 30 seconds)
+ * @param intervalMs - Interval in milliseconds (default: 300000 = 5 minutes)
  * @returns NodeJS.Timeout - Interval ID for cleanup
  */
-export function startCommunityBountyRelayer(intervalMs: number = 30000): NodeJS.Timeout {
-  log(`Starting community bounty relayer service (interval: ${intervalMs}ms)`, 'relayer');
+export function startCommunityBountyRelayer(intervalMs: number = 300000): NodeJS.Timeout {
+  log(`Starting community bounty relayer service (interval: ${intervalMs}ms, backup mode)`, 'relayer');
 
   // WHY RUN IMMEDIATELY: Process any existing claimed bounties without waiting
   processClaimedBounties().catch(error => {

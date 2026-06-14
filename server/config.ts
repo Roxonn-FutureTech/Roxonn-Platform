@@ -343,3 +343,11 @@ export function validateConfig() {
     }
   }
 }
+
+// Feature flags for community bounties enhancements
+export const FEATURE_FLAGS = {
+  AUTO_CLAIM_ENABLED: process.env.FEATURE_AUTO_CLAIM === 'true',
+  AUTO_REGISTRATION_ENABLED: process.env.FEATURE_AUTO_REGISTRATION === 'true',
+  GAS_MONITORING_ENABLED: process.env.FEATURE_GAS_MONITORING !== 'false', // Default true
+  RATE_LIMIT_RETRY_ENABLED: process.env.FEATURE_RATE_LIMIT_RETRY !== 'false' // Default true
+};

@@ -15,7 +15,9 @@ import {
   handleIssueOpened,
   handleAttemptCommand,
   handlePullRequestMergedForAutoPayout,
+  postGitHubComment,
 } from '../github';
+import { processMergedPullRequestForCommunityBounties } from './communityBountyWebhookHandlers';
 
 const router = Router();
 
@@ -132,14 +134,28 @@ async function handleGitHubAppWebhook(req: Request, res: Response) {
     } else if (event === 'pull_request' && payload.action === 'closed' && payload.pull_request?.merged === true) {
       log(`Processing merged PR #${payload.pull_request?.number} in ${payload.repository?.full_name}`, 'webhook-app');
       setImmediate(() => {
+        // Process pool bounties (existing flow)
         handlePullRequestMergedForAutoPayout(payload, installationId)
+          .then(() => {
+            // Also process community bounties (new auto-claim flow)
+            return processMergedPullRequestForCommunityBounties({
+              prNumber: payload.pull_request.number,
+              prAuthor: payload.pull_request.user.login,
+              prAuthorId: String(payload.pull_request.user.id),
+              prBody: payload.pull_request.body || '',
+              repoOwner: payload.repository.owner.login,
+              repoName: payload.repository.name,
+              repoFullName: payload.repository.full_name,
+              installationId
+            });
+          })
           .then(() => storage.markWebhookDeliveryCompleted(delivery))
           .catch(err => {
-            log(`Error in PR merge auto-payout handler: ${err?.message || err}`, 'webhook-app');
+            log(`Error in PR merge handler: ${err?.message || err}`, 'webhook-app');
             storage.markWebhookDeliveryFailed(delivery, err?.message || String(err));
           });
       });
-      return res.status(202).json({ message: 'PR merge auto-payout processing initiated.' });
+      return res.status(202).json({ message: 'PR merge processing initiated.' });
 
       // --- Handle Repository Visibility Changes ---
     } else if (event === 'repository' && (payload.action === 'privatized' || payload.action === 'publicized')) {

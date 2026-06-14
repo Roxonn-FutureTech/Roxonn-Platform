@@ -40,6 +40,7 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
     // Modified Issue struct
     enum Status { Created, Allocated, Distributed, Cancelled } // Added Status enum
     enum CurrencyType { XDC, ROXN, USDC } // Currency type enum
+    enum BountyStatus { ACTIVE, COMPLETED, REFUNDED, CANCELLED } // Community bounty status
 
     struct Issue {
         uint256 issueId;
@@ -48,6 +49,17 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
         uint8 status;              // Keep as uint8 for ABI compatibility (0=Created, 1=Allocated, 2=Distributed, 3=Cancelled)
         bool isRoxnReward;        // KEEP for backward compatibility - true for ROXN, false for XDC
         // DO NOT ADD MORE FIELDS - breaks storage compatibility with existing issues!
+    }
+
+    // Community Bounty struct for permissionless bounties
+    struct CommunityBounty {
+        address creator;           // Who funded this bounty
+        uint256 amount;           // Bounty amount (in wei for XDC, or token units for ROXN/USDC)
+        CurrencyType currency;    // XDC, ROXN, or USDC
+        uint256 expiresAt;        // Expiry timestamp (0 = no expiry)
+        BountyStatus status;      // ACTIVE, COMPLETED, REFUNDED, CANCELLED
+        address contributor;      // Who claimed it (0x0 if unclaimed)
+        uint256 completedAt;      // Completion timestamp
     }
 
     // Modified Repository struct for storage compatibility
@@ -59,6 +71,7 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
         mapping(uint256 => Issue) issueRewards;
         uint256 poolRewardsROXN;     // ROXN rewards
         uint256 poolRewardsUSDC;     // USDC rewards
+        mapping(uint256 => CommunityBounty[]) communityBounties;  // issueNumber => array of community bounties
     }
 
     // CRITICAL: State variable order MUST match old contract exactly!
@@ -87,6 +100,7 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
     IERC20 public usdcToken; // USDC ERC20 token
     mapping(uint256 => uint256) public repositoryUSDCPools; // repoId => USDC pool amount
     mapping(uint256 => mapping(uint256 => uint8)) public issueCurrencyTypes; // repoId => issueId => currencyType
+    address public relayer; // Relayer address for community bounty completion
 
     // Events
     event UserRegistered(address indexed user, string username, string role);
@@ -102,6 +116,11 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
     event UpgraderAdded(address upgrader);
     event UpgraderRemoved(address upgrader);
     event FeeParametersUpdated(address feeCollector, uint256 platformFeeRate, uint256 contributorFeeRate);
+
+    // Community Bounty events
+    event CommunityBountyCreated(string indexed repoGithubId, uint256 indexed issueNumber, uint256 bountyIndex, address indexed creator, uint256 amount, CurrencyType currency, uint256 expiresAt);
+    event CommunityBountyCompleted(string indexed repoGithubId, uint256 indexed issueNumber, uint256 bountyIndex, address indexed contributor, uint256 contributorPayout);
+    event CommunityBountyRefunded(string indexed repoGithubId, uint256 indexed issueNumber, uint256 bountyIndex, address indexed creator, uint256 refundAmount);
     
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -161,6 +180,11 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
 
     modifier onlyUpgrader() {
         require(upgraders[_msgSender()] || _msgSender() == owner(), "DualCurrencyRepoRewards: Not authorized to upgrade");
+        _;
+    }
+
+    modifier onlyRelayer() {
+        require(_msgSender() == relayer || _msgSender() == admin || _msgSender() == owner(), "DualCurrencyRepoRewards: Not authorized relayer");
         _;
     }
 
@@ -465,6 +489,11 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
         emit UpgraderRemoved(upgrader);
     }
 
+    function setRelayer(address _relayer) external onlyOwner {
+        require(_relayer != address(0), "DualCurrencyRepoRewards: Invalid relayer address");
+        relayer = _relayer;
+    }
+
     function _authorizeUpgrade(address newImplementation) internal override onlyUpgrader {}
 
     // Getter functions
@@ -572,6 +601,186 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
         return repositories[_repoId].issueCount;
     }
 
+    // ==================== COMMUNITY BOUNTY FUNCTIONS ====================
+
+    /**
+     * @notice Create a community bounty for any GitHub issue (permissionless)
+     * @param repoGithubId Repository identifier (e.g., "repo-owner-name")
+     * @param issueNumber GitHub issue number
+     * @param amount Bounty amount in wei (for XDC) or token units (for ROXN/USDC)
+     * @param currency Currency type (0=XDC, 1=ROXN, 2=USDC)
+     * @param expiryDays Days until expiry (0 = no expiry)
+     */
+    function createCommunityBounty(
+        string memory repoGithubId,
+        uint256 issueNumber,
+        uint256 amount,
+        CurrencyType currency,
+        uint256 expiryDays
+    ) external payable nonReentrant {
+        require(amount > 0, "DualCurrencyRepoRewards: Amount must be positive");
+
+        // Calculate expiry timestamp
+        uint256 expiresAt = expiryDays > 0
+            ? block.timestamp + (expiryDays * 1 days)
+            : 0;
+
+        // Transfer funds to contract (escrow)
+        if (currency == CurrencyType.XDC) {
+            require(msg.value == amount, "DualCurrencyRepoRewards: Incorrect XDC amount");
+        } else if (currency == CurrencyType.ROXN) {
+            require(msg.value == 0, "DualCurrencyRepoRewards: Do not send XDC for ROXN bounty");
+            roxnToken.safeTransferFrom(_msgSender(), address(this), amount);
+        } else if (currency == CurrencyType.USDC) {
+            require(msg.value == 0, "DualCurrencyRepoRewards: Do not send XDC for USDC bounty");
+            usdcToken.safeTransferFrom(_msgSender(), address(this), amount);
+        }
+
+        // Create bounty record
+        CommunityBounty memory bounty = CommunityBounty({
+            creator: _msgSender(),
+            amount: amount,
+            currency: currency,
+            expiresAt: expiresAt,
+            status: BountyStatus.ACTIVE,
+            contributor: address(0),
+            completedAt: 0
+        });
+
+        // Add to repository's community bounties array for this issue
+        uint256 repoId = uint256(keccak256(abi.encodePacked(repoGithubId)));
+        repositories[repoId].communityBounties[issueNumber].push(bounty);
+
+        // Get bounty index (array length - 1)
+        uint256 bountyIndex = repositories[repoId].communityBounties[issueNumber].length - 1;
+
+        emit CommunityBountyCreated(repoGithubId, issueNumber, bountyIndex, _msgSender(), amount, currency, expiresAt);
+    }
+
+    /**
+     * @notice Complete a community bounty (relayer-only)
+     * @param repoGithubId Repository identifier
+     * @param issueNumber GitHub issue number
+     * @param bountyIndex Index of bounty in array (for multiple bounties on same issue)
+     * @param contributor Address to receive the bounty
+     */
+    function completeCommunityBounty(
+        string memory repoGithubId,
+        uint256 issueNumber,
+        uint256 bountyIndex,
+        address contributor
+    ) external onlyRelayer nonReentrant {
+        require(contributor != address(0), "DualCurrencyRepoRewards: Invalid contributor");
+
+        uint256 repoId = uint256(keccak256(abi.encodePacked(repoGithubId)));
+        CommunityBounty storage bounty = repositories[repoId].communityBounties[issueNumber][bountyIndex];
+
+        require(bounty.status == BountyStatus.ACTIVE, "DualCurrencyRepoRewards: Bounty not active");
+        require(bounty.expiresAt == 0 || block.timestamp <= bounty.expiresAt, "DualCurrencyRepoRewards: Bounty expired");
+
+        // Calculate fees
+        uint256 platformFee = (bounty.amount * platformFeeRate) / 10000;
+        uint256 contributorFee = (bounty.amount * contributorFeeRate) / 10000;
+        uint256 totalFees = platformFee + contributorFee;
+        uint256 contributorPayout = bounty.amount - totalFees;
+
+        // Update bounty status
+        bounty.status = BountyStatus.COMPLETED;
+        bounty.contributor = contributor;
+        bounty.completedAt = block.timestamp;
+
+        // Transfer funds
+        if (bounty.currency == CurrencyType.XDC) {
+            if (totalFees > 0 && feeCollector != address(0)) {
+                (bool feeSuccess, ) = feeCollector.call{value: totalFees}("");
+                require(feeSuccess, "DualCurrencyRepoRewards: Failed to send XDC fee");
+            }
+            (bool success, ) = payable(contributor).call{value: contributorPayout}("");
+            require(success, "DualCurrencyRepoRewards: Failed to send XDC to contributor");
+        } else if (bounty.currency == CurrencyType.ROXN) {
+            if (totalFees > 0 && feeCollector != address(0)) {
+                roxnToken.safeTransfer(feeCollector, totalFees);
+            }
+            roxnToken.safeTransfer(contributor, contributorPayout);
+        } else if (bounty.currency == CurrencyType.USDC) {
+            if (totalFees > 0 && feeCollector != address(0)) {
+                usdcToken.safeTransfer(feeCollector, totalFees);
+            }
+            usdcToken.safeTransfer(contributor, contributorPayout);
+        }
+
+        emit CommunityBountyCompleted(repoGithubId, issueNumber, bountyIndex, contributor, contributorPayout);
+    }
+
+    /**
+     * @notice Refund an expired community bounty
+     * @param repoGithubId Repository identifier
+     * @param issueNumber GitHub issue number
+     * @param bountyIndex Index of bounty in array
+     */
+    function refundCommunityBounty(
+        string memory repoGithubId,
+        uint256 issueNumber,
+        uint256 bountyIndex
+    ) external nonReentrant {
+        uint256 repoId = uint256(keccak256(abi.encodePacked(repoGithubId)));
+        CommunityBounty storage bounty = repositories[repoId].communityBounties[issueNumber][bountyIndex];
+
+        require(_msgSender() == bounty.creator, "DualCurrencyRepoRewards: Only creator can refund");
+        require(bounty.status == BountyStatus.ACTIVE, "DualCurrencyRepoRewards: Bounty not active");
+        require(bounty.expiresAt > 0 && block.timestamp > bounty.expiresAt, "DualCurrencyRepoRewards: Bounty not expired");
+
+        uint256 refundAmount = bounty.amount;
+        bounty.status = BountyStatus.REFUNDED;
+
+        // Return funds to creator
+        if (bounty.currency == CurrencyType.XDC) {
+            (bool success, ) = payable(bounty.creator).call{value: refundAmount}("");
+            require(success, "DualCurrencyRepoRewards: Failed to refund XDC");
+        } else if (bounty.currency == CurrencyType.ROXN) {
+            roxnToken.safeTransfer(bounty.creator, refundAmount);
+        } else if (bounty.currency == CurrencyType.USDC) {
+            usdcToken.safeTransfer(bounty.creator, refundAmount);
+        }
+
+        emit CommunityBountyRefunded(repoGithubId, issueNumber, bountyIndex, bounty.creator, refundAmount);
+    }
+
+    /**
+     * @notice Get all community bounties for a specific issue
+     * @param repoGithubId Repository identifier
+     * @param issueNumber GitHub issue number
+     * @return Array of community bounties
+     */
+    function getCommunityBounties(
+        string memory repoGithubId,
+        uint256 issueNumber
+    ) external view returns (CommunityBounty[] memory) {
+        uint256 repoId = uint256(keccak256(abi.encodePacked(repoGithubId)));
+        return repositories[repoId].communityBounties[issueNumber];
+    }
+
+    /**
+     * @notice Get count of active community bounties for an issue
+     * @param repoGithubId Repository identifier
+     * @param issueNumber GitHub issue number
+     * @return Count of active bounties
+     */
+    function getActiveCommunityBountyCount(
+        string memory repoGithubId,
+        uint256 issueNumber
+    ) external view returns (uint256) {
+        uint256 repoId = uint256(keccak256(abi.encodePacked(repoGithubId)));
+        CommunityBounty[] memory bounties = repositories[repoId].communityBounties[issueNumber];
+        uint256 count = 0;
+        for (uint256 i = 0; i < bounties.length; i++) {
+            if (bounties[i].status == BountyStatus.ACTIVE) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     /**
      * @dev Allows the owner to reclaim all XDC balance held by this contract.
      * This is intended for situations where funds might be stuck or unaccounted for
@@ -588,5 +797,5 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
         }
     }
     
-    uint256[47] private __gap; // Adjusted gap slightly due to new state variables and new function
+    uint256[46] private __gap; // Adjusted gap: reduced by 1 for relayer address state variable
 }
