@@ -1,4 +1,5 @@
-import { users, registeredRepositories, bountyRequests, communityBounties, webhookDeliveries, payouts, bountyAttempts, issueComments } from "../shared/schema";
+import { users, registeredRepositories, bountyRequests, communityBounties, webhookDeliveries, payouts, bountyAttempts, issueComments, platformFlags } from "../shared/schema";
+import type { NewPayout, Payout } from "../shared/schema";
 import { eq, and, sql, inArray, desc } from "drizzle-orm";
 import { db } from "./db";
 import session from "express-session";
@@ -15,6 +16,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { KMSClient, EncryptCommand, DecryptCommand } from '@aws-sdk/client-kms';
 import { pipeline } from 'stream/promises';
 import fs from 'fs';
+import { sendLedgerFailureAlert } from './email';
 const { Pool } = pkg;
 
 // Create a separate pool for session store
@@ -1241,7 +1243,7 @@ export class DatabaseStorage implements IStorage {
    * SECURITY: Atomic insert with unique constraint
    * If payout already exists, INSERT will fail (idempotency guarantee)
    */
-  async recordPayout(payout: any): Promise<any> {
+  async recordPayout(payout: NewPayout): Promise<Payout> {
     try {
       const [result] = await db.insert(payouts)
         .values(payout)
@@ -1256,6 +1258,23 @@ export class DatabaseStorage implements IStorage {
       }
       log(`Error recording payout: ${error instanceof Error ? error.message : String(error)}`, 'storage-ERROR');
       throw error;
+    }
+  }
+
+  /**
+   * OPS-01: Query community relayer kill-switch from platform_flags table.
+   * Returns false on missing row OR DB error (fail-safe: disabled by default).
+   */
+  async getRelayerEnabled(): Promise<boolean> {
+    try {
+      const [row] = await db.select()
+        .from(platformFlags)
+        .where(eq(platformFlags.key, 'community_relayer_enabled'))
+        .limit(1);
+      return row?.value ?? false; // default OFF if row missing
+    } catch (error) {
+      log(`Error reading relayer kill-switch flag: ${error instanceof Error ? error.message : String(error)}`, 'storage-ERROR');
+      return false; // fail-safe: disable on DB error
     }
   }
 
@@ -1615,3 +1634,40 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+
+/**
+ * FUND-04: Retry ledger insert with backoff; never re-throws (blockchain tx already succeeded).
+ * - On unique-constraint / "Payout already recorded": treats as idempotency success (no re-send).
+ * - On DB error: retries up to maxAttempts with 200ms/400ms backoff.
+ * - On exhaustion: fires sendLedgerFailureAlert + [PAYOUT-LEDGER-FAILURE] structured log.
+ *   Does NOT re-throw — FUND-05 reconciliation is the backstop (D-10).
+ */
+export async function recordPayoutWithRetry(payoutData: NewPayout, maxAttempts = 3): Promise<void> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await storage.recordPayout(payoutData);
+      return;
+    } catch (err: any) {
+      // Idempotency hit — not a failure; the row already exists
+      if (err.message?.includes('unique constraint') || err.message?.includes('Payout already recorded')) {
+        log(`[PAYOUT-LEDGER-FAILURE] Payout already recorded (idempotency guard fired) tx=${payoutData.txHash}`, 'payout');
+        return;
+      }
+      if (attempt < maxAttempts) {
+        const delay = attempt * 200; // 200ms then 400ms
+        log(`[PAYOUT-LEDGER-FAILURE] Attempt ${attempt} failed: ${err.message}. Retrying in ${delay}ms`, 'payout');
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        // Exhausted retries — alert + structured log, do NOT re-throw
+        log(`[PAYOUT-LEDGER-FAILURE] All ${maxAttempts} attempts failed for tx=${payoutData.txHash} repo=${payoutData.repositoryGithubId} issue=#${payoutData.issueNumber}: ${err.message}`, 'payout-ERROR');
+        await sendLedgerFailureAlert({
+          txHash: payoutData.txHash ?? 'unknown',
+          repoId: payoutData.repositoryGithubId,
+          issueNumber: payoutData.issueNumber,
+          error: err.message,
+        }).catch((alertErr: any) => log(`SES alert also failed: ${alertErr.message}`, 'payout-ERROR'));
+        // Do NOT re-throw: blockchain tx succeeded; FUND-05 reconciliation recovers the row (D-10)
+      }
+    }
+  }
+}
