@@ -284,4 +284,265 @@ describe("CommunityBountyEscrow", function () {
       expect(cRate).to.equal(50n);
     });
   });
+
+  // ============================================================================
+  // CASE 6 — CONTRACT/MULTISIG RECIPIENT (ESCROW-02)
+  //
+  // Proves the escrow's .call payouts/refunds reach a CONTRACT recipient. A
+  // .transfer (2300 gas) would brick a contract whose receive() does any work
+  // (here it does SSTORE + emit). Tests BOTH completeBounty and refundBounty.
+  // ============================================================================
+  describe("contract/multisig recipient (.call vs .transfer) — ESCROW-02", function () {
+    it("completeBounty pays a contract recipient via .call", async function () {
+      const Recipient = await ethers.getContractFactory("ContractRecipient");
+      const recipient = await Recipient.deploy(await escrow.getAddress());
+      await recipient.waitForDeployment();
+      const recipientAddr = await recipient.getAddress();
+
+      const bountyId = await createActiveBounty(NO_EXPIRY);
+
+      const pRate = await escrow.platformFeeRate();
+      const cRate = await escrow.contributorFeeRate();
+      const expectedNet =
+        BOUNTY_AMOUNT -
+        (BOUNTY_AMOUNT * pRate) / 10000n -
+        (BOUNTY_AMOUNT * cRate) / 10000n;
+
+      // Must NOT revert and the contract recipient must actually receive funds.
+      await expect(
+        escrow.connect(relayer).completeBounty(bountyId, recipientAddr)
+      ).to.changeEtherBalance(recipient, expectedNet);
+
+      expect(await recipient.total()).to.equal(expectedNet);
+    });
+
+    it("refundBounty refunds a CONTRACT creator via .call after expiry", async function () {
+      // A contract is the creator: it creates + funds the bounty, then reclaims
+      // after expiry. .transfer would brick its working receive(); .call succeeds.
+      const Recipient = await ethers.getContractFactory("ContractRecipient");
+      const creatorContract = await Recipient.deploy(await escrow.getAddress());
+      await creatorContract.waitForDeployment();
+      const creatorAddr = await creatorContract.getAddress();
+
+      // Fund the creator-contract so it can pay the bounty value into escrow.
+      await creatorContract.fund({ value: BOUNTY_AMOUNT });
+
+      const now = BigInt(await time.latest());
+      const expiresAt = now + 3600n;
+
+      // Contract creates + funds the bounty (becomes the on-chain creator).
+      const createTx = await creatorContract.createXdcBounty(BOUNTY_AMOUNT, expiresAt);
+      await createTx.wait();
+      const bountyId = 1n; // first bounty on a fresh escrow
+
+      // Advance past expiry, then the contract reclaims its funds via .call refund.
+      await time.increaseTo(Number(expiresAt) + 1);
+
+      await expect(
+        creatorContract.doRefund(bountyId)
+      ).to.changeEtherBalance(creatorContract, BOUNTY_AMOUNT);
+
+      const bounty = await escrow.getBounty(bountyId);
+      expect(bounty.status).to.equal(2); // REFUNDED
+    });
+  });
+
+  // ============================================================================
+  // CASE 7 — REENTRANCY ATTACKER REVERTS (ESCROW-02)
+  //
+  // A contract recipient/creator that re-enters completeBounty/refundBounty from
+  // receive() must be rejected by CEI (status set before transfer) + nonReentrant.
+  // ============================================================================
+  describe("reentrancy attacker revert — ESCROW-02", function () {
+    it("completeBounty reverts when the recipient re-enters", async function () {
+      const Attacker = await ethers.getContractFactory("ReentrantAttacker");
+      const attacker = await Attacker.deploy(await escrow.getAddress());
+      await attacker.waitForDeployment();
+      const attackerAddr = await attacker.getAddress();
+
+      const bountyId = await createActiveBounty(NO_EXPIRY);
+      // re-enter completeBounty on the SAME bounty
+      await attacker.setTarget(bountyId, true);
+
+      // The re-entrant completeBounty call hits nonReentrant -> reverts; the outer
+      // payout require(okContributor) then fails -> whole tx reverts.
+      await expect(
+        escrow.connect(relayer).completeBounty(bountyId, attackerAddr)
+      ).to.be.reverted;
+
+      // Bounty must remain claimable (status not stuck COMPLETED with funds gone).
+      const bounty = await escrow.getBounty(bountyId);
+      expect(bounty.status).to.equal(0); // ACTIVE
+    });
+
+    it("refundBounty reverts when the creator contract re-enters", async function () {
+      // Attacker is the CREATOR: it funds a bounty then re-enters refundBounty
+      // from its receive() when the refund .call lands.
+      const Attacker = await ethers.getContractFactory("ReentrantAttacker");
+      const attacker = await Attacker.deploy(await escrow.getAddress());
+      await attacker.waitForDeployment();
+      const attackerAddr = await attacker.getAddress();
+
+      // Fund the attacker so it can create + fund the bounty.
+      await attacker.fund({ value: BOUNTY_AMOUNT * 2n });
+
+      const now = BigInt(await time.latest());
+      const expiresAt = now + 3600n;
+
+      // Attacker creates + funds the bounty (becomes the creator).
+      const createTx = await attacker.createXdcBounty(BOUNTY_AMOUNT, expiresAt);
+      await createTx.wait();
+      const bountyId = 1n;
+
+      // Arm re-entry of refundBounty, advance past expiry.
+      await attacker.setTarget(bountyId, false); // false => re-enter refundBounty
+      await time.increaseTo(Number(expiresAt) + 1);
+
+      // The refund .call triggers attacker.receive() -> re-entrant refundBounty
+      // hits nonReentrant -> reverts; outer require(okRefund) fails -> whole tx reverts.
+      await expect(attacker.doRefund(bountyId)).to.be.reverted;
+
+      // Funds must NOT have left the escrow; bounty stays ACTIVE.
+      const bounty = await escrow.getBounty(bountyId);
+      expect(bounty.status).to.equal(0); // ACTIVE
+    });
+  });
+
+  // ============================================================================
+  // CASE 8 — FEE-ON-TRANSFER ERC20: stored amount == received (ESCROW-06)
+  // ============================================================================
+  describe("fee-on-transfer ERC20 stored==received — ESCROW-06", function () {
+    const ROXN = 1; // CurrencyType.ROXN
+
+    it("createBounty stores the tokens ACTUALLY received, not the requested amount", async function () {
+      // Deploy a 10% fee-on-transfer token; owner mints the full supply.
+      const FOT = await ethers.getContractFactory("FeeOnTransferToken");
+      const fot = await FOT.deploy(1000n); // 10% fee
+      await fot.waitForDeployment();
+      const fotAddr = await fot.getAddress();
+
+      // Re-deploy escrow with the FOT as the ROXN token so currency=ROXN routes to it.
+      const escrowFot = await deployEscrow(
+        relayer.address,
+        feeCollector.address,
+        fotAddr,                 // roxnToken = fee-on-transfer token
+        tokenPlaceholder.address // usdcToken placeholder
+      );
+      const escrowFotAddr = await escrowFot.getAddress();
+
+      const requested = ethers.parseEther("100");
+      const fee = (requested * 1000n) / 10000n; // 10%
+      const expectedReceived = requested - fee;
+
+      // Give creator generously more than `requested` (FOT burns a fee on each
+      // transfer, so over-fund), then approve EXACTLY the requested amount.
+      await fot.transfer(creator.address, requested * 3n);
+      await fot.connect(creator).approve(escrowFotAddr, requested);
+
+      const tx = await escrowFot
+        .connect(creator)
+        .createBounty(requested, ROXN, NO_EXPIRY);
+      const receipt = await tx.wait();
+
+      // Parse BountyCreated -> stored amount must equal RECEIVED (requested - fee).
+      const iface = escrowFot.interface;
+      let createdAmount;
+      for (const log of receipt.logs) {
+        try {
+          const parsed = iface.parseLog(log);
+          if (parsed && parsed.name === "BountyCreated") {
+            createdAmount = parsed.args.amount;
+            break;
+          }
+        } catch (_) { /* skip */ }
+      }
+      expect(createdAmount, "BountyCreated not found").to.not.be.undefined;
+      expect(createdAmount).to.equal(expectedReceived);
+
+      // And the stored bounty struct reflects the received amount.
+      const bounty = await escrowFot.getBounty(1);
+      expect(bounty.amount).to.equal(expectedReceived);
+    });
+  });
+
+  // ============================================================================
+  // CASE 9 — renounceOwnership reverts (CONTRACT-05)
+  // ============================================================================
+  describe("renounceOwnership disabled — CONTRACT-05", function () {
+    it("reverts with 'Renounce disabled' for the owner", async function () {
+      await expect(escrow.connect(owner).renounceOwnership()).to.be.revertedWith(
+        "Renounce disabled"
+      );
+    });
+  });
+
+  // ============================================================================
+  // CASE 10 — bare implementation initialize() reverts (ESCROW-03)
+  // ============================================================================
+  describe("bare-impl initialize() reverts (_disableInitializers) — ESCROW-03", function () {
+    it("calling initialize() directly on a freshly-deployed impl reverts", async function () {
+      const Impl = await ethers.getContractFactory("CommunityBountyEscrow");
+      const impl = await Impl.deploy(); // bare implementation (constructor disables init)
+      await impl.waitForDeployment();
+
+      await expect(
+        impl.initialize(
+          other.address,
+          tokenPlaceholder.address,
+          relayer.address,
+          feeCollector.address
+        )
+      ).to.be.revertedWithCustomError(impl, "InvalidInitialization");
+    });
+  });
+
+  // ============================================================================
+  // CASE 11 — STORAGE-SAFETY HARNESS (RC-6 / FIX 4)
+  //
+  // Exercises validateUpgrade against the MATERIALIZED frozen V1 baseline (NOT a
+  // same-name self-compare) + an executed negative control. While the gate-only
+  // contracts/baseline/ sources exist (Task 1), these run with real factories;
+  // after Task 3 deletes them, the suite skips gracefully.
+  // ============================================================================
+  describe("validateUpgrade storage-safety harness — RC-6 / FIX 4", function () {
+    async function baselinePresent() {
+      try {
+        await ethers.getContractFactory("CommunityBountyEscrowV1");
+        await ethers.getContractFactory("CommunityBountyEscrow_BROKEN");
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    it("PASSES validateUpgrade(CommunityBountyEscrowV1 -> CommunityBountyEscrow)", async function () {
+      if (!(await baselinePresent())) {
+        this.skip(); // baselines deleted post-gate (Task 3)
+        return;
+      }
+      const V1 = await ethers.getContractFactory("CommunityBountyEscrowV1");
+      const NEW = await ethers.getContractFactory("CommunityBountyEscrow");
+      await expect(
+        upgrades.validateUpgrade(V1, NEW, {
+          kind: "uups",
+          unsafeAllow: ["constructor", "missing-initializer-call"],
+        })
+      ).to.not.be.rejected;
+    });
+
+    it("NEGATIVE CONTROL: validateUpgrade(CommunityBountyEscrowV1 -> CommunityBountyEscrow_BROKEN) THROWS", async function () {
+      if (!(await baselinePresent())) {
+        this.skip();
+        return;
+      }
+      const V1 = await ethers.getContractFactory("CommunityBountyEscrowV1");
+      const BROKEN = await ethers.getContractFactory("CommunityBountyEscrow_BROKEN");
+      await expect(
+        upgrades.validateUpgrade(V1, BROKEN, {
+          kind: "uups",
+          unsafeAllow: ["constructor", "missing-initializer-call"],
+        })
+      ).to.be.rejected;
+    });
+  });
 });
