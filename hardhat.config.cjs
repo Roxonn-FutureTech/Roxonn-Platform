@@ -14,6 +14,23 @@ module.exports = {
     }
   },
   networks: {
+    // XDC mainnet fork (chain 50) for upgrade dry-run rehearsals.
+    // Gated behind FORK_MAINNET=1 so the default `npx hardhat test` does NOT fork
+    // (stays offline/deterministic). The per-chain hardforkHistory is MANDATORY:
+    // without chains[50].hardforkHistory.shanghai=0, ALL EVM execution on the fork
+    // (even a view call or the upgrade tx) reverts "no known hardfork for execution
+    // on a historical block". XDC mainnet is post-Shanghai (EIP-1559 confirmed).
+    hardhat: {
+      chainId: 50,
+      forking: {
+        url: process.env.XDC_RPC_URL,
+        blockNumber: 103780000,
+        enabled: process.env.FORK_MAINNET === '1',
+      },
+      chains: {
+        50: { hardforkHistory: { shanghai: 0 } },
+      },
+    },
     xdcTestnet: { // Keeping your existing testnet config
       url: process.env.XDC_RPC_URL_TESTNET || "https://rpc.apothem.network", // Using the primary Apothem RPC endpoint
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
