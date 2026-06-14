@@ -647,7 +647,8 @@ export const communityBounties = pgTable("community_bounties", {
   amount: decimal("amount", { precision: 18, scale: 8 }).notNull(),
   currency: text("currency").notNull(), // USDC, XDC, ROXN
 
-  // Fee breakdown (Split fee model: 2.5% client + 2.5% contributor = 5% total)
+  // Fee breakdown (Split fee model: 50 bps client + 50 bps contributor = 1% total,
+  // on-chain-aligned; config-driven via PLATFORM_FEE_RATE / CONTRIBUTOR_FEE_RATE, default 50 bps each)
   baseBountyAmount: decimal("base_bounty_amount", { precision: 18, scale: 8 }).notNull(),
   clientFeeAmount: decimal("client_fee_amount", { precision: 18, scale: 8 }).notNull(),
   contributorFeeAmount: decimal("contributor_fee_amount", { precision: 18, scale: 8 }).notNull(),
