@@ -1346,8 +1346,10 @@ export async function handleIssueClosed(payload: WebhookPayload, installationId:
               }
 
               // FUND-01: Require a corroborating closing keyword before trusting cross-ref fallback.
-              // Without "closes/fixes/resolves #<issueNumber>" in title or body AND a merged PR,
-              // we cannot be sure this PR closed the issue — refuse and alert instead of guessing.
+              // The enclosing `if (isMerged)` already guarantees a merged PR (via the correct
+              // sourceIssue.pull_request.merged_at path); the only additional corroboration this
+              // fallback needs is a "closes/fixes/resolves #<issueNumber>" reference in title/body.
+              // Without it we cannot be sure this PR closed the issue — refuse and alert, never guess.
               const closingKeywords = ['closes', 'fixes', 'resolves', 'close', 'fix', 'resolve'];
               const prBody = (sourceIssue?.body || '').toLowerCase();
               const prTitle = (sourceIssue?.title || '').toLowerCase();
@@ -1356,8 +1358,8 @@ export async function handleIssueClosed(payload: WebhookPayload, installationId:
                 prTitle.includes(`${kw} #${issueNumber}`)
               );
 
-              if (!hasClosingRef || !sourceIssue?.merged_at) {
-                log(`❌ Cross-reference fallback: PR #${prNumber} by ${prAuthor} has no verified 'closes #${issueNumber}' keyword or is not merged. Refusing payout.`, 'webhook-issue');
+              if (!hasClosingRef) {
+                log(`❌ Cross-reference fallback: PR #${prNumber} by ${prAuthor} (merged) has no verified 'closes #${issueNumber}' keyword in title/body. Refusing payout.`, 'webhook-issue');
                 await sendRefusedPayoutAlert({ repoId: String(repoId), issueNumber, candidatePR: prNumber, candidateAuthor: prAuthor });
                 return; // payout stays unpaid; human does manual payout
               }
