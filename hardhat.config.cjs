@@ -24,7 +24,10 @@ module.exports = {
       chainId: 50,
       forking: {
         url: process.env.XDC_RPC_URL,
-        blockNumber: 103780000,
+        // Re-pinned to a FRESH contemporaneous block within seconds of chain head
+        // for the 04-07 pre-go fork dry-run (Risk #14: prove safety against current
+        // live state, not a stale block). Head was ~103788839 at pin time (2026-06-14).
+        blockNumber: 103788834,
         enabled: process.env.FORK_MAINNET === '1',
       },
       chains: {
