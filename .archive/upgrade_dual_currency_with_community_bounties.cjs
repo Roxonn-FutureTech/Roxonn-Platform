@@ -1,3 +1,16 @@
+// ============================================================================
+// QUARANTINED (CONTRACT-04 / DESIGN-01) — DO NOT RUN.
+// The embedded community-bounty consolidation design was REJECTED. The canonical
+// community-bounty path is the standalone CommunityBountyEscrow contract.
+// This script uses unsafeSkipStorageCheck:true / unsafeAllowCustomTypes:true which
+// DEFEAT the mandatory D-02 validateUpgrade storage-layout gate, and it is the only
+// code that could repopulate the removed in-struct communityBounties mapping.
+// It has been moved out of scripts/ into .archive/ and hard-guarded below so it can
+// NEVER execute. Git history is the record of the original content.
+// ============================================================================
+console.error('QUARANTINED: embedded community-bounty consolidation was REJECTED (DESIGN-01). The canonical path is CommunityBountyEscrow. This script must NEVER run.');
+process.exit(1);
+
 const { ethers, upgrades } = require("hardhat");
 require('dotenv').config({ path: './server/.env' });
 
