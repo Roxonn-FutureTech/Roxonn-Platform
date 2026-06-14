@@ -786,7 +786,7 @@ export const payouts = pgTable("payouts", {
   totalPlatformFee: decimal("total_platform_fee", { precision: 18, scale: 8 }).notNull(),
 
   // Blockchain transaction
-  txHash: text("tx_hash").notNull(),
+  txHash: text("tx_hash").notNull().unique(),
   blockNumber: integer("block_number"),
   gasUsed: integer("gas_used"),
 
