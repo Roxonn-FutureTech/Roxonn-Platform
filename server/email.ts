@@ -281,3 +281,66 @@ This is an automated alert from Roxonn Gas Monitor.`
     log(`Failed to send gas alert email: ${err.message}`, 'email-ERROR');
   }
 }
+
+/**
+ * Send alert to admin when a payout ledger write fails after all retries (FUND-04).
+ * The blockchain transaction already succeeded; this alert + FUND-05 reconciliation
+ * are the recovery path. Funds are NEVER re-sent.
+ * Throw-safe: SES send failure is logged, never re-thrown.
+ */
+export async function sendLedgerFailureAlert(data: {
+  txHash: string;
+  repoId: string;
+  issueNumber: number;
+  error: string;
+}): Promise<void> {
+  const params = {
+    Destination: { ToAddresses: [ADMIN_EMAIL] },
+    Source: SOURCE_EMAIL,
+    Message: {
+      Subject: { Data: '[PAYOUT-LEDGER-FAILURE] Payout record write failed after retries' },
+      Body: {
+        Text: {
+          Data: `Payout ledger write failed after all retries.\n\nTX: ${data.txHash}\nRepo: ${data.repoId}\nIssue: #${data.issueNumber}\nError: ${data.error}\n\nThe blockchain transaction succeeded. Run the reconciliation script to recover the missing row:\n  tsx scripts/reconcile-payouts.ts --apply`
+        }
+      }
+    }
+  };
+  try {
+    await ses.send(new SendEmailCommand(params));
+    log('[PAYOUT-LEDGER-FAILURE] Alert email sent', 'email');
+  } catch (err: any) {
+    log(`[PAYOUT-LEDGER-FAILURE] Failed to send alert email: ${err.message}`, 'email-ERROR');
+  }
+}
+
+/**
+ * Send alert to admin when the cross-reference fallback refuses a payout (FUND-01).
+ * No funds were sent. A human must trigger a manual payout.
+ * Throw-safe: SES send failure is logged, never re-thrown.
+ */
+export async function sendRefusedPayoutAlert(data: {
+  repoId: string;
+  issueNumber: number;
+  candidatePR: number;
+  candidateAuthor: string;
+}): Promise<void> {
+  const params = {
+    Destination: { ToAddresses: [ADMIN_EMAIL] },
+    Source: SOURCE_EMAIL,
+    Message: {
+      Subject: { Data: '[PAYOUT-REFUSED] Cross-reference fallback refused a payout — manual action required' },
+      Body: {
+        Text: {
+          Data: `Payout was refused: cross-reference fallback could not verify a closing keyword.\n\nRepo ID: ${data.repoId}\nIssue: #${data.issueNumber}\nCandidate PR: #${data.candidatePR}\nCandidate Author: ${data.candidateAuthor}\n\nNo funds were sent. A human must trigger a manual payout.`
+        }
+      }
+    }
+  };
+  try {
+    await ses.send(new SendEmailCommand(params));
+    log(`[PAYOUT-REFUSED] Alert sent for issue #${data.issueNumber}`, 'email');
+  } catch (err: any) {
+    log(`[PAYOUT-REFUSED] Failed to send alert email: ${err.message}`, 'email-ERROR');
+  }
+}
