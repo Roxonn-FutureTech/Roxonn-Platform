@@ -661,6 +661,12 @@ export const communityBounties = pgTable("community_bounties", {
   escrowDepositedAt: timestamp("escrow_deposited_at", { mode: 'date', withTimezone: true }),
   blockchainBountyId: integer("blockchain_bounty_id"), // On-chain bounty ID from CommunityBountyEscrow.sol
 
+  // GitHub App installation id (FUND-03: schema-drift catch-up — this column ALREADY EXISTS
+  // in the live prod DB, added out-of-band; declaring it here so Drizzle maps it. Mirrors
+  // webhook_deliveries.installation_id. Captured forward at claim/funding time; absence routes
+  // a bounty to the recoverable 'pending_installation' status, never terminal failed_verification.)
+  githubInstallationId: text("github_installation_id"),
+
   // Payment tracking (fiat/crypto)
   paymentMethod: text("payment_method"), // 'crypto', 'fiat'
   paymentStatus: text("payment_status").default("pending").notNull(), // 'pending', 'completed', 'failed'
@@ -669,6 +675,9 @@ export const communityBounties = pgTable("community_bounties", {
   // Status lifecycle
   status: text("status").default("pending_payment").notNull(),
   // 'pending_payment' → 'funded' → 'claimed' → 'completed' | 'refunded' | 'expired' | 'failed_verification'
+  // 'pending_installation' (recoverable, FUND-03): the GitHub App installation id could not be
+  //   resolved at verification time; a flag/kill-switch-gated sweep re-attempts resolution and
+  //   restores a resolved already-claimed bounty to 'claimed' for relayer re-pickup, or TTL→'expired'.
 
   // Claim tracking
   claimedByUserId: integer("claimed_by_user_id").references(() => users.id, { onDelete: 'set null' }),
@@ -722,12 +731,13 @@ export const createCommunityBountySchema = z.object({
 });
 
 export const updateCommunityBountySchema = z.object({
-  status: z.enum(['pending_payment', 'funded', 'claimed', 'completed', 'refunded', 'expired', 'failed_verification']).optional(),
+  status: z.enum(['pending_payment', 'funded', 'claimed', 'completed', 'refunded', 'expired', 'failed_verification', 'pending_installation']).optional(),
   paymentStatus: z.enum(['pending', 'completed', 'failed']).optional(),
   paymentMethod: z.enum(['crypto', 'fiat']).optional(),
   escrowTxHash: z.string().optional(),
   escrowBlockNumber: z.number().int().optional(),
   escrowDepositedAt: z.date().optional(),
+  githubInstallationId: z.string().optional(),
   claimedByUserId: z.number().int().optional(),
   claimedByGithubUsername: z.string().optional(),
   claimedPrNumber: z.number().int().optional(),

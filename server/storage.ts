@@ -1032,6 +1032,7 @@ export class DatabaseStorage implements IStorage {
     escrowBlockNumber: number;
     escrowDepositedAt: Date;
     blockchainBountyId: number;
+    githubInstallationId: string;
     onrampTransactionId: number;
     claimedByUserId: number;
     claimedByGithubUsername: string;
@@ -1104,6 +1105,27 @@ export class DatabaseStorage implements IStorage {
       return bounties;
     } catch (error) {
       log(`Error fetching claimed community bounties: ${error instanceof Error ? error.message : String(error)}`, 'storage');
+      return [];
+    }
+  }
+
+  /**
+   * Get community bounties stuck awaiting GitHub App installation resolution (FUND-03)
+   *
+   * WHY: Recovery sweep re-attempts installation-id resolution for bounties that could not be
+   *      verified because no installation id was available. Mirrors getClaimedCommunityBounties.
+   * RETURNS: Bounties in 'pending_installation' status, oldest claim first (FIFO)
+   */
+  async getBountiesPendingInstallation(): Promise<any[]> {
+    try {
+      const bounties = await db.select()
+        .from(communityBounties)
+        .where(eq(communityBounties.status, 'pending_installation'))
+        .orderBy(communityBounties.claimedAt);
+
+      return bounties;
+    } catch (error) {
+      log(`Error fetching pending-installation community bounties: ${error instanceof Error ? error.message : String(error)}`, 'storage');
       return [];
     }
   }
