@@ -557,16 +557,24 @@ async function startServer() {
       }
     }, 60 * 1000);
 
+    // Load feature flags (shared by relayer gate + gas-monitor gate below)
+    const { FEATURE_FLAGS } = await import('./config');
+
     // Start community bounty relayer service (processes claimed bounties)
     // WHY: Verifies PR merges and completes bounty payouts on-chain
     // Now runs every 5 minutes as backup (webhooks are primary)
-    startCommunityBountyRelayer();
+    // Gated by FEATURE_COMMUNITY_RELAYER_ENABLED (OPS-01, D-17): defaults OFF; set to 'true' only in Phase 5
+    if (FEATURE_FLAGS.COMMUNITY_RELAYER_ENABLED) {
+      startCommunityBountyRelayer();
+      log('Community bounty relayer started', 'relayer');
+    } else {
+      log('Community bounty relayer is DISABLED (FEATURE_COMMUNITY_RELAYER_ENABLED not set to true)', 'relayer');
+    }
 
     // Start gas monitoring service
     // WHY: Monitors relayer wallet balance and sends email alerts when low
     // Checks every 5 minutes, alerts at 10 XDC (warning) and 5 XDC (critical)
     const { gasMonitor } = await import('./services/gasMonitor');
-    const { FEATURE_FLAGS } = await import('./config');
     if (FEATURE_FLAGS.GAS_MONITORING_ENABLED) {
       gasMonitor.startMonitoring();
       log('Gas monitoring service started', 'blockchain');

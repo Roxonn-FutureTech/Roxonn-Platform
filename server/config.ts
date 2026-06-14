@@ -349,5 +349,6 @@ export const FEATURE_FLAGS = {
   AUTO_CLAIM_ENABLED: process.env.FEATURE_AUTO_CLAIM === 'true',
   AUTO_REGISTRATION_ENABLED: process.env.FEATURE_AUTO_REGISTRATION === 'true',
   GAS_MONITORING_ENABLED: process.env.FEATURE_GAS_MONITORING !== 'false', // Default true
-  RATE_LIMIT_RETRY_ENABLED: process.env.FEATURE_RATE_LIMIT_RETRY !== 'false' // Default true
+  RATE_LIMIT_RETRY_ENABLED: process.env.FEATURE_RATE_LIMIT_RETRY !== 'false', // Default true
+  COMMUNITY_RELAYER_ENABLED: process.env.FEATURE_COMMUNITY_RELAYER_ENABLED === 'true' // Default OFF (D-17) — enable only in Phase 5
 };
