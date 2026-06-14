@@ -661,19 +661,17 @@ contract DualCurrencyRepoRewards is Initializable, ContextUpgradeable, OwnableUp
         }
     }
 
-    // STORAGE-LAYOUT NOTE (CONTRACT-05):
-    // __gap MUST stay the field at slot 16 (its original start) and MUST still END at slot 61
-    // so the OpenZeppelin validateUpgrade "shrinkgap" rule (endMatchesGap) accepts the change.
-    // It was uint256[46] (slots 16..61). We shrink it by 3 (the count of the O(1) membership/
-    // lookup maps appended immediately AFTER the gap) to uint256[43] (slots 16..58); the 3 new
-    // maps then occupy slots 59, 60, 61. Total reserved across __gap + appended maps stays 62.
-    // DO NOT move the maps before __gap and DO NOT change the count without re-deriving this math.
-    uint256[43] private __gap; // Adjusted gap: was [46]; reduced by 3 for the O(1) maps appended below (still ends at slot 61; total reserved 62)
-
-    // NEW VARIABLES - APPENDED AFTER __gap TO PRESERVE STORAGE LAYOUT (CONTRACT-01)
-    // O(1) membership / lookup maps replacing the former unbounded array scans.
-    // Appended AFTER the shrunken __gap (see note above) so validateUpgrade accepts the gap shrink.
-    mapping(uint256 => mapping(address => bool)) public isRepoPoolManager; // repoId => manager => is pool manager
-    mapping(uint256 => mapping(address => bool)) public isRepoContributor; // repoId => contributor => is contributor
-    mapping(bytes32 => address) public usernameToWallet;                   // keccak256(bytes(username)) => wallet
+    // STORAGE-LAYOUT NOTE (CONTRACT-05 / CONTRACT-01) — verified GREEN by scripts/validate_upgrade_dualcurrency.cjs:
+    // The original __gap was uint256[46] occupying slots 16..61. To add the 3 O(1) maps storage-safely,
+    // the maps take the FREED HEAD of that region (slots 16, 17, 18) and __gap is shrunk to uint256[43]
+    // and MOVED to sit AFTER the maps so it spans slots 19..61 and STILL ENDS at slot 61. OpenZeppelin's
+    // validateUpgrade "shrinkgap" rule (endMatchesGap) requires the resized gap to end at the original
+    // gap's end slot (61), with the size decrease (46->43) matched by exactly 3 "corresponding variable
+    // inserts" — the 3 maps. (Placing the maps AFTER a [43] gap makes the gap end at slot 58 and is REJECTED.)
+    // Region 16..61 stays fully reserved: 3 map slots + 43 gap slots = 46. DO NOT move the maps after __gap
+    // and DO NOT change the map count without re-deriving the gap size and re-running validateUpgrade.
+    mapping(uint256 => mapping(address => bool)) public isRepoPoolManager; // repoId => manager => is pool manager (slot 16)
+    mapping(uint256 => mapping(address => bool)) public isRepoContributor; // repoId => contributor => is contributor (slot 17)
+    mapping(bytes32 => address) public usernameToWallet;                   // keccak256(bytes(username)) => wallet (slot 18)
+    uint256[43] private __gap; // shrunk from [46]; sits AFTER the 3 maps so it spans slots 19..61 (ends at 61 -> endMatchesGap=TRUE)
 }
