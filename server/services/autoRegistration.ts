@@ -45,6 +45,30 @@ export async function autoRegisterContributor(
 
       // User exists with wallet - return existing
       if (user.xdcWalletAddress) {
+        // T-05-04 recovery: a pre-fix crash could have left a wallet address but a
+        // NULL encrypted key, with the ciphertext still staged in pending_wallets.
+        // Resume the promotion before returning so the user is not left key-less.
+        if (!user.encryptedPrivateKey && user.walletReferenceId) {
+          const ref = user.walletReferenceId;
+          await db.transaction(async (tx) => {
+            const [pending] = await tx.select()
+              .from(pendingWallets)
+              .where(eq(pendingWallets.referenceId, ref))
+              .limit(1);
+            if (pending) {
+              await tx.update(users)
+                .set({
+                  encryptedPrivateKey: pending.encryptedPrivateKey,
+                  encryptedMnemonic: pending.encryptedMnemonic,
+                })
+                .where(eq(users.id, user.id));
+              await tx.delete(pendingWallets).where(eq(pendingWallets.referenceId, ref));
+              log(`Recovered staged wallet key for existing user ${githubUsername} (ID: ${user.id})`, 'auth');
+            } else {
+              log(`WARNING: user ${githubUsername} (ID: ${user.id}) has a wallet address but no encrypted key and no recoverable pending row`, 'auth');
+            }
+          });
+        }
         log(`User ${githubUsername} already registered with wallet: ${user.xdcWalletAddress}`, 'auth');
         return {
           success: true,
@@ -73,78 +97,74 @@ export async function autoRegisterContributor(
     );
     log(`Blockchain registration successful for ${githubUsername}`, 'blockchain');
 
-    // Step 4: Create or update user in database
-    let userId: number;
-
-    if (existingUsers.length > 0) {
-      // Update existing user with wallet info
-      const user = existingUsers[0];
-
-      await db
-        .update(users)
-        .set({
-          xdcWalletAddress: walletData.address,
-          walletReferenceId: walletData.referenceId,
-          isProfileComplete: true,
-          role: 'contributor',
-          updatedAt: new Date()
-        })
-        .where(eq(users.id, user.id));
-
-      userId = user.id;
-      log(`Updated user ${githubUsername} (ID: ${userId}) with wallet`, 'auth');
-
-    } else {
-      // Create new user
-      const newUsers = await db
-        .insert(users)
-        .values({
-          githubUsername,
-          username: githubUsername, // Use GitHub username as display name
-          githubId,
-          xdcWalletAddress: walletData.address,
-          walletReferenceId: walletData.referenceId,
-          isProfileComplete: true,
-          role: 'contributor',
-          // Optional fields that will be null
-          name: null,
-          email: null,
-          avatarUrl: null,
-          githubAccessToken: null,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        })
-        .returning({ id: users.id });
-
-      userId = newUsers[0].id;
-      log(`Created new user ${githubUsername} (ID: ${userId}) via auto-registration`, 'auth');
-    }
-
-    // Step 5: FUND-02 — promote the encrypted key from pending_wallets onto the user row
-    // and remove the orphan, atomically and idempotently.
-    // generateWallet() stores the encrypted key in pending_wallets (no user row exists yet at
-    // that point). Now that the user row exists, copy the ciphertext across and delete the
-    // staging row in a single transaction. Ciphertext only — plaintext is never in scope here.
-    await db.transaction(async (tx) => {
+    // Step 4 + 5 (FUND-02, T-05-04): create/update the user row AND promote the
+    // encrypted key from pending_wallets in a SINGLE transaction. generateWallet()
+    // stages the ciphertext in pending_wallets (no user row exists yet). Doing the
+    // user-row write and the key promotion atomically means a crash can never leave
+    // a committed user row with a NULL key: either the user lands WITH its key, or
+    // nothing commits and the pending row TTL-expires harmlessly (no key-less user,
+    // no orphan-loss). Ciphertext only — plaintext is never in scope here.
+    const userId = await db.transaction(async (tx): Promise<number> => {
       const [pending] = await tx.select()
         .from(pendingWallets)
         .where(eq(pendingWallets.referenceId, walletData.referenceId))
         .limit(1);
 
-      if (pending) {
-        await tx.update(users)
+      let uid: number;
+      if (existingUsers.length > 0) {
+        // Update existing user with wallet info + key in the same transaction.
+        const user = existingUsers[0];
+        await tx
+          .update(users)
           .set({
-            encryptedPrivateKey: pending.encryptedPrivateKey,
-            encryptedMnemonic: pending.encryptedMnemonic,
+            xdcWalletAddress: walletData.address,
+            walletReferenceId: walletData.referenceId,
+            isProfileComplete: true,
+            role: 'contributor',
+            ...(pending
+              ? { encryptedPrivateKey: pending.encryptedPrivateKey, encryptedMnemonic: pending.encryptedMnemonic }
+              : {}),
+            updatedAt: new Date()
           })
-          .where(eq(users.id, userId));
+          .where(eq(users.id, user.id));
+        uid = user.id;
+        log(`Updated user ${githubUsername} (ID: ${uid}) with wallet`, 'auth');
+      } else {
+        // Create new user with wallet + key set atomically.
+        const newUsers = await tx
+          .insert(users)
+          .values({
+            githubUsername,
+            username: githubUsername, // Use GitHub username as display name
+            githubId,
+            xdcWalletAddress: walletData.address,
+            walletReferenceId: walletData.referenceId,
+            isProfileComplete: true,
+            role: 'contributor',
+            encryptedPrivateKey: pending ? pending.encryptedPrivateKey : null,
+            encryptedMnemonic: pending ? pending.encryptedMnemonic : null,
+            // Optional fields that will be null
+            name: null,
+            email: null,
+            avatarUrl: null,
+            githubAccessToken: null,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          })
+          .returning({ id: users.id });
+        uid = newUsers[0].id;
+        log(`Created new user ${githubUsername} (ID: ${uid}) via auto-registration`, 'auth');
+      }
 
+      // Remove the staging row once its ciphertext is on the durable user row.
+      // No pending row (already promoted, or storeWalletSecret hit the user-branch
+      // directly) → no-op. Idempotent.
+      if (pending) {
         await tx.delete(pendingWallets)
           .where(eq(pendingWallets.referenceId, walletData.referenceId));
       }
-      // No pending row (already promoted, or storeWalletSecret hit the user-branch
-      // directly for a pre-existing user) → no-op. Idempotent: re-running finds
-      // nothing to promote and leaves the durable user-row key intact.
+
+      return uid;
     });
 
     log(`Auto-registration completed successfully for ${githubUsername}`, 'auth');
