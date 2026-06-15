@@ -1,7 +1,6 @@
 import { db } from '../db';
 import { users, pendingWallets } from '../../shared/schema';
 import { generateWallet } from '../tatum';
-import { storeWalletSecret } from '../aws';
 import { blockchain } from '../blockchain';
 import { log } from '../utils';
 import { eq } from 'drizzle-orm';

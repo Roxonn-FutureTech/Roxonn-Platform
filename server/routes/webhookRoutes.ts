@@ -49,12 +49,15 @@ async function handleGitHubAppWebhook(req: Request, res: Response) {
 
   // Parse payload AFTER verification
   const payload = JSON.parse(req.body.toString('utf8'));
-  const installationId = String(payload.installation?.id);
-
-  if (!installationId) {
+  // Guard on the RAW value before stringifying: String(undefined) === "undefined"
+  // is truthy, so the old `!String(payload.installation?.id)` check never fired
+  // and let "undefined" propagate as the installation id (WR-05).
+  const rawInstallationId = payload.installation?.id;
+  if (rawInstallationId == null) {
     log('App webhook ignored: Missing installation ID', 'webhook-app');
     return res.status(400).json({ error: 'Missing installation ID' });
   }
+  const installationId = String(rawInstallationId);
 
   // CRITICAL-1 FIX: Webhook Delivery Idempotency Check
   // Check if we've already processed this exact webhook delivery
@@ -149,7 +152,10 @@ async function handleGitHubAppWebhook(req: Request, res: Response) {
             });
         } else {
           log('Auto-claim DISABLED — skipping handlePullRequestMergedForAutoPayout', 'webhook-app');
-          storage.markWebhookDeliveryCompleted(delivery);
+          // WR-02: chain .catch so a DB failure here is logged, not an unhandled
+          // rejection inside setImmediate (mirrors the enabled branch above).
+          storage.markWebhookDeliveryCompleted(delivery)
+            .catch(err => log(`Error marking webhook delivery completed (auto-claim disabled): ${err?.message || err}`, 'webhook-app'));
         }
       });
       return res.status(202).json({ message: 'PR merge processing initiated.' });
