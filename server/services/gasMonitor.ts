@@ -251,8 +251,27 @@ export class GasMonitor {
   }
 }
 
-// Singleton instance - initialized with config
-export const gasMonitor = new GasMonitor(
-  config.xdcRpcUrl,
-  config.relayerPrivateKey
-);
+// Lazy factory — never construct at import time so an empty PRIVATE_KEY
+// (config.relayerPrivateKey === '') cannot throw at startup (INFLIGHT-02, D-04).
+let _gasMonitor: GasMonitor | null = null;
+
+/**
+ * Return the GasMonitor singleton, constructing it on the first call.
+ * Construction is deferred until this function is invoked so that an empty
+ * PRIVATE_KEY env var does not crash module evaluation.
+ */
+export function getGasMonitor(): GasMonitor {
+  if (!_gasMonitor) {
+    _gasMonitor = new GasMonitor(config.xdcRpcUrl, config.relayerPrivateKey);
+  }
+  return _gasMonitor;
+}
+
+/**
+ * Return the GasMonitor instance only if it was already constructed,
+ * without triggering construction.  Used by the shutdown path so that
+ * stopMonitoring() is a no-op when gas monitoring was never started.
+ */
+export function peekGasMonitor(): GasMonitor | null {
+  return _gasMonitor;
+}
