@@ -34,15 +34,31 @@ export class GasMonitor {
     alertCooldown: 3600000 // 1 hour
   };
   private monitoringInterval: NodeJS.Timeout | null = null;
+  // True only when a valid relayer signer was derived. When false (empty or
+  // malformed PRIVATE_KEY) the monitor is inert and startMonitoring() is a
+  // no-op, so a missing key never crashes boot (INFLIGHT-02 / CR-01).
+  private relayerConfigured = false;
 
   constructor(rpcUrl: string, relayerPrivateKey: string) {
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
+    this.relayerAddress = '';
 
-    // Derive relayer address from private key
-    const wallet = new ethers.Wallet(relayerPrivateKey);
-    this.relayerAddress = wallet.address;
-
-    log(`Gas monitor initialized for relayer: ${this.relayerAddress}`, 'blockchain');
+    // Derive relayer address from private key. An empty or malformed key must
+    // NOT throw out of the constructor (INFLIGHT-02 / CR-01): ethers' Wallet
+    // rejects an empty key synchronously, and under the default-ON
+    // GAS_MONITORING flag that throw would propagate to startServer()'s catch
+    // and call process.exit(1). Instead we degrade to an inert monitor.
+    if (relayerPrivateKey) {
+      try {
+        this.relayerAddress = new ethers.Wallet(relayerPrivateKey).address;
+        this.relayerConfigured = true;
+        log(`Gas monitor initialized for relayer: ${this.relayerAddress}`, 'blockchain');
+      } catch (err) {
+        log(`Gas monitor inert: invalid relayer private key (${(err as Error).message})`, 'blockchain');
+      }
+    } else {
+      log('Gas monitor inert: relayer private key is empty (monitoring will not start)', 'blockchain');
+    }
   }
 
   /**
@@ -138,6 +154,10 @@ export class GasMonitor {
    * Start background monitoring service
    */
   startMonitoring(): void {
+    if (!this.relayerConfigured) {
+      log('Gas monitor not started: no valid relayer key configured', 'blockchain');
+      return;
+    }
     if (this.monitoringInterval) {
       log('Gas monitor already running', 'blockchain');
       return;

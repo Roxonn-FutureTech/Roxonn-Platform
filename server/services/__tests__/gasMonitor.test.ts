@@ -35,14 +35,19 @@ describe('gasMonitor lazy factory (INFLIGHT-02)', () => {
     vi.resetModules();
   });
 
-  it('Test 1 (no-throw on empty key): importing the module and calling getGasMonitor() does not throw', async () => {
+  it('Test 1 (no-throw on empty key): getGasMonitor() and startMonitoring() do not throw when relayerPrivateKey is empty', async () => {
     const { getGasMonitor } = await importGasMonitor();
-    // The pre-fix eager construction with '' would throw at import above.
-    // With the lazy factory, the throw happens inside getGasMonitor() — but
-    // the mock config sets relayerPrivateKey:''; ethers Wallet construction
-    // is what throws.  The module itself must not throw at import.
-    // We assert the *module import* resolves and getGasMonitor is callable.
-    expect(typeof getGasMonitor).toBe('function');
+    // CR-01 regression: pre-fix, getGasMonitor() constructed `new ethers.Wallet('')`
+    // which throws synchronously; under the default-ON GAS_MONITORING flag this
+    // reached startServer()'s catch → process.exit(1). The constructor now degrades
+    // to an inert monitor instead of throwing. This test actually CALLS the factory
+    // (the prior version only checked `typeof` and never exercised the crash path).
+    let monitor: ReturnType<typeof getGasMonitor> | undefined;
+    expect(() => { monitor = getGasMonitor(); }).not.toThrow();
+    expect(monitor).toBeDefined();
+    // startMonitoring() must be a safe no-op when no valid key is configured
+    // (no interval scheduled, no throw) so boot cannot crash.
+    expect(() => monitor!.startMonitoring()).not.toThrow();
   });
 
   it('Test 2 (caching): two calls to getGasMonitor() return the same instance', async () => {
