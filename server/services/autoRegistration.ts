@@ -1,10 +1,11 @@
 import { db } from '../db';
-import { users } from '../../shared/schema';
+import { users, pendingWallets } from '../../shared/schema';
 import { generateWallet } from '../tatum';
 import { storeWalletSecret } from '../aws';
 import { blockchain } from '../blockchain';
 import { log } from '../utils';
 import { eq } from 'drizzle-orm';
+import { FEATURE_FLAGS } from '../config';
 
 export interface AutoRegistrationResult {
   success: boolean;
@@ -26,6 +27,10 @@ export async function autoRegisterContributor(
   githubUsername: string,
   githubId: string
 ): Promise<AutoRegistrationResult> {
+  if (!FEATURE_FLAGS.AUTO_REGISTRATION_ENABLED) {
+    return { success: false, action: 'failed', error: 'auto-registration disabled' };
+  }
+
   try {
     log(`Auto-registration initiated for ${githubUsername} (GitHub ID: ${githubId})`, 'auth');
 
@@ -116,13 +121,33 @@ export async function autoRegisterContributor(
       log(`Created new user ${githubUsername} (ID: ${userId}) via auto-registration`, 'auth');
     }
 
-    // Step 5: Store wallet secrets securely
-    // Note: generateWallet() already called storeWalletSecret() internally,
-    // but it stored in pendingWallets table. Now that we have a user,
-    // we should update the user's encrypted keys directly.
+    // Step 5: FUND-02 — promote the encrypted key from pending_wallets onto the user row
+    // and remove the orphan, atomically and idempotently.
+    // generateWallet() stores the encrypted key in pending_wallets (no user row exists yet at
+    // that point). Now that the user row exists, copy the ciphertext across and delete the
+    // staging row in a single transaction. Ciphertext only — plaintext is never in scope here.
+    await db.transaction(async (tx) => {
+      const [pending] = await tx.select()
+        .from(pendingWallets)
+        .where(eq(pendingWallets.referenceId, walletData.referenceId))
+        .limit(1);
 
-    // The sensitive data should already be in pendingWallets table from generateWallet()
-    // We'll retrieve it and update the user record
+      if (pending) {
+        await tx.update(users)
+          .set({
+            encryptedPrivateKey: pending.encryptedPrivateKey,
+            encryptedMnemonic: pending.encryptedMnemonic,
+          })
+          .where(eq(users.id, userId));
+
+        await tx.delete(pendingWallets)
+          .where(eq(pendingWallets.referenceId, walletData.referenceId));
+      }
+      // No pending row (already promoted, or storeWalletSecret hit the user-branch
+      // directly for a pre-existing user) → no-op. Idempotent: re-running finds
+      // nothing to promote and leaves the durable user-row key intact.
+    });
+
     log(`Auto-registration completed successfully for ${githubUsername}`, 'auth');
 
     return {
