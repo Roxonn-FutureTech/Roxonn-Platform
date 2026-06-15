@@ -19,7 +19,7 @@
  *
  * Expected result on prod: 0 orphans, 0 expired (confirmed by CONTEXT.md + RESEARCH.md).
  * If this script reports > 0 orphans, file a follow-up — this phase's FUND-02 fix
- * (scripts/autoRegistration.ts transaction-safe promotion) prevents future orphans,
+ * (server/services/autoRegistration.ts transaction-safe promotion) prevents future orphans,
  * but a one-time cleanup may be needed for any pre-fix rows.
  */
 
