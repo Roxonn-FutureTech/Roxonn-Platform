@@ -3,7 +3,7 @@ import express from 'express';
 import { IncomingMessage } from 'http';
 import crypto from 'crypto';
 import { Webhooks } from '@octokit/webhooks';
-import { config } from '../config';
+import { config, FEATURE_FLAGS } from '../config';
 import { log } from '../utils';
 import { storage } from '../storage';
 import { db } from '../db';
@@ -133,18 +133,24 @@ async function handleGitHubAppWebhook(req: Request, res: Response) {
     } else if (event === 'pull_request' && payload.action === 'closed' && payload.pull_request?.merged === true) {
       log(`Processing merged PR #${payload.pull_request?.number} in ${payload.repository?.full_name}`, 'webhook-app');
       setImmediate(() => {
-        // FUND-03 / FIX 11: handlePullRequestMergedForAutoPayout is the SINGLE canonical
-        // merged-PR claim+capture path. It already performs the full community-bounty
+        // FUND-03 / FIX 11 / Phase 4: handlePullRequestMergedForAutoPayout is the SINGLE
+        // canonical merged-PR claim+capture path. It performs the full community-bounty
         // claim+capture (issue-bounty check, status='claimed', claimCommunityBountyAtomic).
-        // The former chained path-2 community-bounty webhook call was a
-        // redundant, build-broken duplicate and has been removed; the now-orphaned
-        // communityBountyWebhookHandlers.ts is slated for Phase 5 (INFLIGHT-03) deletion.
-        handlePullRequestMergedForAutoPayout(payload, installationId)
-          .then(() => storage.markWebhookDeliveryCompleted(delivery))
-          .catch(err => {
-            log(`Error in PR merge handler: ${err?.message || err}`, 'webhook-app');
-            storage.markWebhookDeliveryFailed(delivery, err?.message || String(err));
-          });
+        // The former path-2 communityBountyWebhookHandlers.ts was a redundant, build-broken
+        // duplicate and has been deleted in Phase 4 (ecfbab8/e549589). This handler is
+        // now gated by AUTO_CLAIM_ENABLED (D-07) — disabled by default; feature stays OFF
+        // until the ENABLE-RUNBOOK prerequisites (FUND-05 + SEC-03) are met.
+        if (FEATURE_FLAGS.AUTO_CLAIM_ENABLED) {
+          handlePullRequestMergedForAutoPayout(payload, installationId)
+            .then(() => storage.markWebhookDeliveryCompleted(delivery))
+            .catch(err => {
+              log(`Error in PR merge handler: ${err?.message || err}`, 'webhook-app');
+              storage.markWebhookDeliveryFailed(delivery, err?.message || String(err));
+            });
+        } else {
+          log('Auto-claim DISABLED — skipping handlePullRequestMergedForAutoPayout', 'webhook-app');
+          storage.markWebhookDeliveryCompleted(delivery);
+        }
       });
       return res.status(202).json({ message: 'PR merge processing initiated.' });
 
