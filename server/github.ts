@@ -1,7 +1,7 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import { Request, Response } from 'express';
 import crypto from 'crypto';
-import { config } from './config';
+import { config, FEATURE_FLAGS } from './config';
 import { blockchain } from './blockchain';
 import { storage, recordPayoutWithRetry } from './storage';
 import { log, sanitizeUserInput, sanitizeGitHubIssue } from './utils';
@@ -1901,6 +1901,16 @@ Please try again or contact support.
   // WORKFLOW: Verify PR merge → Mark as claimed → Relayer completes payout
   } else if (command.type === 'community_claim' && command.prNumber) {
     log(`Processing claim for PR #${command.prNumber}`, 'bounty-command');
+
+    // T-05-08: gate the community-bounty claim behind AUTO_CLAIM_ENABLED. The merged-PR
+    // auto-payout path (webhookRoutes.ts) is already gated by this flag; this manual
+    // `/claim` comment leads to the same funded→claimed state mutation (which arms the
+    // relayer), so it must be gated too. While the feature is DISABLED (Phase 5 D-01),
+    // a `/claim` comment must NOT mutate bounty state — a clean no-op, no claim write.
+    if (!FEATURE_FLAGS.AUTO_CLAIM_ENABLED) {
+      log(`Community-bounty /claim ignored — AUTO_CLAIM disabled (feature gated OFF, D-01)`, 'bounty-command');
+      return;
+    }
 
     // Check if bounty exists for this issue
     const bounty = await storage.getCommunityBountyByIssue(owner, repo, issueNumber);
