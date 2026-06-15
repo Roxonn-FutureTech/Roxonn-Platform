@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { log } from '../vite';
+import { log } from '../utils';
 import { config } from '../config';
 
 interface GasThresholds {

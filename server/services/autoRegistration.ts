@@ -3,7 +3,7 @@ import { users } from '../../shared/schema';
 import { generateWallet } from '../tatum';
 import { storeWalletSecret } from '../aws';
 import { blockchain } from '../blockchain';
-import { log } from '../vite';
+import { log } from '../utils';
 import { eq } from 'drizzle-orm';
 
 export interface AutoRegistrationResult {

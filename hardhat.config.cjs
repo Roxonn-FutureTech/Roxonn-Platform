@@ -74,7 +74,7 @@ module.exports = {
           // `hardhat verify` therefore needs XDCSCAN_API_KEY set to an Etherscan V2 key, OR
           // verify manually via the XDCScan web UI "Solidity (Standard JSON Input)" using the
           // build-info JSON in artifacts/build-info/. BlocksScan (bapi.blocksscan.io) was 502 at deploy time.
-          apiURL: "https://api.xdcscan.com/api", // XDCScan mainnet API
+          apiURL: "https://api.etherscan.io/v2/api?chainid=50", // Etherscan V2 unified; XDCScan migrated off V1
           browserURL: "https://xdcscan.com/"
         }
       }
