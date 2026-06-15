@@ -28,7 +28,7 @@ module.exports = {
         // for the 04-08 pre-go escrow fork dry-run (Risk #14: prove safety against
         // current live state, not a stale block). Head was ~103789981 at pin time
         // (2026-06-14, 04-08 Task 1); head-5 for reorg safety.
-        blockNumber: 103789976,
+        blockNumber: 103797900,
         enabled: process.env.FORK_MAINNET === '1',
       },
       chains: {
@@ -69,6 +69,11 @@ module.exports = {
         network: "xinfin", // This must match the network name above
         chainId: 50,
         urls: {
+          // NOTE (2026-06-15): api.xdcscan.com deprecated its Etherscan V1 endpoint and now
+          // requires Etherscan API V2 (a real api.etherscan.io multichain key, chainid=50).
+          // `hardhat verify` therefore needs XDCSCAN_API_KEY set to an Etherscan V2 key, OR
+          // verify manually via the XDCScan web UI "Solidity (Standard JSON Input)" using the
+          // build-info JSON in artifacts/build-info/. BlocksScan (bapi.blocksscan.io) was 502 at deploy time.
           apiURL: "https://api.xdcscan.com/api", // XDCScan mainnet API
           browserURL: "https://xdcscan.com/"
         }
