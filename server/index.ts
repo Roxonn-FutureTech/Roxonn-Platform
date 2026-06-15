@@ -587,9 +587,11 @@ async function startServer() {
     // Start gas monitoring service
     // WHY: Monitors relayer wallet balance and sends email alerts when low
     // Checks every 5 minutes, alerts at 10 XDC (warning) and 5 XDC (critical)
-    const { gasMonitor } = await import('./services/gasMonitor');
+    // Import and construction are INSIDE the flag guard (INFLIGHT-02, D-04):
+    // an empty PRIVATE_KEY with the flag off must not crash boot.
     if (FEATURE_FLAGS.GAS_MONITORING_ENABLED) {
-      gasMonitor.startMonitoring();
+      const { getGasMonitor } = await import('./services/gasMonitor');
+      getGasMonitor().startMonitoring();
       log('Gas monitoring service started', 'blockchain');
     }
 
@@ -623,9 +625,10 @@ async function shutdown(signal: string) {
   });
 
   try {
-    // Stop gas monitoring service
-    const { gasMonitor } = await import('./services/gasMonitor');
-    gasMonitor.stopMonitoring();
+    // Stop gas monitoring service — use peekGasMonitor() so shutdown is a
+    // no-op when the flag was off and no instance was ever constructed (D-04).
+    const { peekGasMonitor } = await import('./services/gasMonitor');
+    peekGasMonitor()?.stopMonitoring();
     log('Gas monitoring service stopped');
 
     // Close any database connections or other resources
