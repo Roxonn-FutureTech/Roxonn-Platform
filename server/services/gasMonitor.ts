@@ -53,8 +53,12 @@ export class GasMonitor {
         this.relayerAddress = new ethers.Wallet(relayerPrivateKey).address;
         this.relayerConfigured = true;
         log(`Gas monitor initialized for relayer: ${this.relayerAddress}`, 'blockchain');
-      } catch (err) {
-        log(`Gas monitor inert: invalid relayer private key (${(err as Error).message})`, 'blockchain');
+      } catch {
+        // T-05-18: do NOT log the ethers error message. For a malformed (non-empty)
+        // key, ethers v6 echoes the raw key bytes verbatim into the error message
+        // (e.g. `invalid BytesLike value (...value="0x..."...)`), which would leak
+        // key material to logs. Log a static, key-free line instead.
+        log('Gas monitor inert: relayer private key is invalid (key material not logged)', 'blockchain');
       }
     } else {
       log('Gas monitor inert: relayer private key is empty (monitoring will not start)', 'blockchain');

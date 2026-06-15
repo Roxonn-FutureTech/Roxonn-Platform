@@ -79,4 +79,22 @@ describe('gasMonitor lazy factory (INFLIGHT-02)', () => {
     // No getGasMonitor() call has been made in this fresh module instance.
     expect(peekGasMonitor()).toBeNull();
   });
+
+  it('Test 4 (no key leak on malformed key): getGasMonitor() with a malformed key does not throw and never logs the key (T-05-18)', async () => {
+    // A malformed (non-empty) key makes ethers v6 throw an error whose message
+    // echoes the raw input verbatim. The constructor catch must log a static,
+    // key-free line — never the ethers message — or the raw key leaks to logs.
+    const MALFORMED = '0xnot-a-valid-key-deadbeef-SECRETLEAK';
+    vi.doMock('../../config', () => ({
+      config: { xdcRpcUrl: 'http://localhost:8545', relayerPrivateKey: MALFORMED },
+    }));
+    vi.resetModules();
+    const utils = await import('../../utils');
+    const logMock = utils.log as unknown as ReturnType<typeof vi.fn>;
+    const { getGasMonitor } = await importGasMonitor();
+    expect(() => getGasMonitor()).not.toThrow();
+    const allLogged = logMock.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(allLogged).not.toContain('SECRETLEAK');
+    expect(allLogged).not.toContain(MALFORMED);
+  });
 });
