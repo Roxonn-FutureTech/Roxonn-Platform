@@ -1,23 +1,15 @@
 import { Router, Request, Response } from 'express';
-import { requireAuth, csrfProtection } from '../auth';
+import { requireAuth, requireAdmin, csrfProtection } from '../auth';
 import { log } from '../utils';
 
 const router = Router();
 
-// Admin user ID constant - platform admin
-const ADMIN_USER_ID = 1;
-
 // Admin: Get all pending subscription payments
-router.get('/admin/subscription/pending', requireAuth, csrfProtection, async (req, res) => {
+router.get('/admin/subscription/pending', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
   try {
     const user = req.user;
     if (!user) {
       return res.status(401).json({ error: 'User not authenticated' });
-    }
-
-    // Check if user is admin (user ID 1 is the platform admin)
-    if (user.id !== ADMIN_USER_ID) {
-      return res.status(403).json({ error: 'Admin access required' });
     }
 
     // Import services
@@ -56,16 +48,11 @@ router.get('/admin/subscription/pending', requireAuth, csrfProtection, async (re
 });
 
 // Admin: Manually verify a payment
-router.post('/admin/subscription/verify/:orderId', requireAuth, csrfProtection, async (req, res) => {
+router.post('/admin/subscription/verify/:orderId', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
   try {
     const user = req.user;
     if (!user) {
       return res.status(401).json({ error: 'User not authenticated' });
-    }
-
-    // Check admin access (user ID 1 is the platform admin)
-    if (user.id !== ADMIN_USER_ID) {
-      return res.status(403).json({ error: 'Admin access required' });
     }
 
     const { orderId } = req.params;
@@ -95,16 +82,11 @@ router.post('/admin/subscription/verify/:orderId', requireAuth, csrfProtection, 
 });
 
 // Admin: Check Onramp order status
-router.get('/admin/onramp/order/:orderId', requireAuth, csrfProtection, async (req, res) => {
+router.get('/admin/onramp/order/:orderId', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
   try {
     const user = req.user;
     if (!user) {
       return res.status(401).json({ error: 'User not authenticated' });
-    }
-
-    // Check admin access (user ID 1 is the platform admin)
-    if (user.id !== ADMIN_USER_ID) {
-      return res.status(403).json({ error: 'Admin access required' });
     }
 
     const { orderId } = req.params;
@@ -134,16 +116,11 @@ router.get('/admin/onramp/order/:orderId', requireAuth, csrfProtection, async (r
 });
 
 // Admin: Get verification attempts log
-router.get('/admin/verification-log', requireAuth, csrfProtection, async (req, res) => {
+router.get('/admin/verification-log', requireAuth, requireAdmin, csrfProtection, async (req, res) => {
   try {
     const user = req.user;
     if (!user) {
       return res.status(401).json({ error: 'User not authenticated' });
-    }
-
-    // Check admin access (user ID 1 is the platform admin)
-    if (user.id !== ADMIN_USER_ID) {
-      return res.status(403).json({ error: 'Admin access required' });
     }
 
     // For now, return a message about checking server logs
