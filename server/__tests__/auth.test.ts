@@ -228,14 +228,6 @@ describe('Auth Middleware', () => {
       expect(mockNext).toHaveBeenCalled();
     });
 
-    it('should skip CSRF check for VSCode AI completions', () => {
-      mockRequest.path = '/api/vscode/ai/completions';
-      mockRequest.method = 'POST';
-
-      csrfProtection(mockRequest as Request, mockResponse as Response, mockNext);
-      expect(mockNext).toHaveBeenCalled();
-    });
-
     it('should validate CSRF token for POST requests', () => {
       mockRequest.path = '/api/test';
       mockRequest.method = 'POST';

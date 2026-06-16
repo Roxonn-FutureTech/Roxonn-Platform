@@ -282,7 +282,7 @@ function generateCsrfToken(): string {
 // CSRF protection middleware
 export function csrfProtection(req: Request, res: Response, next: NextFunction) {
   // Skip CSRF check for authentication routes
-  if (req.path.startsWith('/api/auth/github') || req.path.startsWith('/api/vscode/ai/completions')) { // Also skip for VSCode API if it uses Bearer token
+  if (req.path.startsWith('/api/auth/github')) {
     return next();
   }
 
