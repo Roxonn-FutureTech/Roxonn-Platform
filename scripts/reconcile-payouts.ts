@@ -54,10 +54,12 @@ const FROM_BLOCK_ARG: number | undefined = (() => {
 })();
 
 // ─── Block chunk size ─────────────────────────────────────────────────────────
-// XDC mainnet (rpc.xinfin.network) typically accepts 1,000-block getLogs ranges.
-// The chunkScan helper halves the range on RPC rejection.
-// Q5 (RESEARCH.md): verify actual cap at dry-run execution time.
-const CHUNK_SIZE = 1000;
+// Q5 (RESEARCH.md) RESOLVED at execution: the configured Ankr XDC RPC
+// (rpc.ankr.com/xdc) caps eth_getLogs at ~10,000 blocks (10k OK, 50k → -32062
+// "Block range is too large"). 1,000 worked but needed ~14k calls for the
+// ~14.4M-block span; 10,000 cuts that ~10x. Override via RECONCILE_CHUNK_SIZE
+// for other RPCs. The chunkScan helper still halves the range on RPC rejection.
+const CHUNK_SIZE = Number(process.env.RECONCILE_CHUNK_SIZE) || 10000;
 
 // ─── ABI artifacts ────────────────────────────────────────────────────────────
 const __filename = fileURLToPath(import.meta.url);
@@ -148,7 +150,11 @@ interface PlannedRow {
  * Fallback value comment: If the Initialized scan fails, set DEPLOYMENT_BLOCK_FALLBACK
  * to the known deployment block from XDCScan (https://explorer.xinfin.network/).
  */
-const DEPLOYMENT_BLOCK_FALLBACK = 0; // Replace with actual block after checking XDCScan if needed
+// Verified 2026-06-16 via eth_getCode binary search on the proxy: block 89474401
+// has NO code, 89474402 HAS code → proxy 0x53A2 deployed at block 89474402.
+// Used when the Initialized(uint64) scan is rejected (Ankr rejects the full-range
+// getLogs), so the scan floor is correct instead of falling back to 0 (#runaway-scan).
+const DEPLOYMENT_BLOCK_FALLBACK = 89474402;
 
 async function findDeploymentBlock(
   provider: ethers.JsonRpcProvider,
