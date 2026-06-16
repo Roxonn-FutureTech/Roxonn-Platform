@@ -304,7 +304,7 @@ app.use('/api/profile', requireAuth);
 // Configure rate limiting
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // Limit each IP to 50 requests per window
+  max: 200, // Limit each IP to 200 requests per window
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   handler: (_req, res) => {
@@ -322,7 +322,7 @@ app.use('/api/auth/', authLimiter);
 // Stricter rate limiting for blockchain operations
 const blockchainLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 200, // Limit each IP to 20 blockchain requests per window
+  max: 200, // Limit each IP to 200 blockchain requests per window
   standardHeaders: true,
   legacyHeaders: false,
   handler: (_req, res) => {

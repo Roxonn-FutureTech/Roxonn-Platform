@@ -26,8 +26,9 @@
  * - Input validation with Zod schemas
  */
 
-import { Router, type Request, Response } from 'express';
+import { Router, type Request, Response, type NextFunction } from 'express';
 import { requireAuth, csrfProtection, requireClient, requireDeveloper } from '../auth';
+import { FEATURE_FLAGS } from '../config';
 import { storage } from '../storage';
 import { blockchain } from '../blockchain';
 import { resolveInstallationIdForRepo } from '../github';
@@ -82,6 +83,18 @@ const claimBountyRateLimiter = rateLimit({
 });
 
 const router = Router();
+
+// DI-01 (defense-in-depth): gate community-bounty mutation endpoints behind the
+// community-bounty feature flag. While the feature is disabled (the default, D-17),
+// the /pay and /claim endpoints must reject — independent of the relayer/webhook
+// trust boundary — so no funds-adjacent mutation is reachable in the OFF posture.
+// 503 (not 404) mirrors the fail-closed admin gate and signals "temporarily unavailable".
+const requireCommunityBountyFeature = (_req: Request, res: Response, next: NextFunction) => {
+  if (!FEATURE_FLAGS.COMMUNITY_RELAYER_ENABLED) {
+    return res.status(503).json({ error: 'Community bounty feature is not enabled' });
+  }
+  next();
+};
 
 /**
  * POST /api/community-bounties
@@ -246,6 +259,7 @@ router.post(
 router.post(
   '/api/community-bounties/:id/pay',
   requireAuth,
+  requireCommunityBountyFeature, // DI-01: reject while community-bounty feature is disabled
   requireClient, // CLIENT only: Only Clients can pay for bounties
   csrfProtection,
   payBountyRateLimiter,
@@ -396,6 +410,7 @@ router.post(
 router.post(
   '/api/community-bounties/:id/claim',
   requireAuth,
+  requireCommunityBountyFeature, // DI-01: reject while community-bounty feature is disabled
   requireDeveloper, // DEVELOPER only: Only Developers can claim bounties
   csrfProtection,
   claimBountyRateLimiter,
