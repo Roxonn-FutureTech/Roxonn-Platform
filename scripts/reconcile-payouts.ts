@@ -274,8 +274,9 @@ async function mapEventToRow(
   }
 
   // Derive base bounty amount: the event amount is the net contributor payout
-  // after 2.5% contributor fee. Invert: base ≈ netAmount / 0.975
-  const baseBountyAmount = netAmountHuman / 0.975;
+  // after the 0.5% contributor fee (CONTRIBUTOR_FEE_RATE=50bps). Invert: base ≈ netAmount / 0.995.
+  // (Verified at dry-run: calculateBountyFees uses 0.5%, so net/0.975 over-estimated base ~2%.)
+  const baseBountyAmount = netAmountHuman / 0.995;
   const fees = storage.calculateBountyFees(baseBountyAmount);
 
   // Sanity check: fees.contributorPayout should ≈ netAmountHuman (within float epsilon)
@@ -289,11 +290,14 @@ async function mapEventToRow(
 
   // Resolve contributor wallet → DB user
   // XDC chain emits '0x'-prefixed addresses; DB stores 'xdc'-prefixed.
-  const xdcAddress = 'xdc' + contributorAddress.slice(2);
+  // DB stores xdc-wallet addresses lowercase and getUserByWalletAddress is an exact match,
+  // but the on-chain event yields a checksummed (mixed-case) address. Lowercase before lookup
+  // (verified at dry-run: without this, all 15 historical payees falsely resolved to "unknown-wallet").
+  const xdcAddress = ('xdc' + contributorAddress.slice(2)).toLowerCase();
   let user: any;
   try {
     user = await storage.getUserByWalletAddress(xdcAddress)
-      || await storage.getUserByWalletAddress(contributorAddress);
+      || await storage.getUserByWalletAddress(contributorAddress.toLowerCase());
   } catch (err: any) {
     console.warn(`  User lookup failed for ${xdcAddress}: ${err.message}`);
     user = null;
@@ -325,7 +329,9 @@ async function mapEventToRow(
     currency,
     netAmountHuman,
     baseBountyAmount: fees.baseBountyAmount,
-    amount: fees.contributorPayout.toString(),
+    // Record the ACTUAL on-chain net payout (the RewardDistributed.amount, ground truth) — NOT the
+    // recalculated fees.contributorPayout. The fee breakdown below stays an estimate (fees_estimated=true).
+    amount: netAmountHuman.toString(),
     clientFeeAmount: fees.clientFeeAmount.toString(),
     contributorFeeAmount: fees.contributorFeeAmount.toString(),
     totalPlatformFee: fees.totalPlatformFee.toString(),
@@ -664,7 +670,7 @@ async function main() {
       issueNumber: row.issueId,
       recipientUserId: null as number | null, // re-resolve via walletResolved flag
       recipientGithubUsername: row.recipientGithubUsername,
-      recipientWalletAddress: 'xdc' + row.contributorAddress.slice(2),
+      recipientWalletAddress: ('xdc' + row.contributorAddress.slice(2)).toLowerCase(),
       amount: row.amount,
       currency: row.currency,
       baseBountyAmount: row.baseBountyAmount.toString(),
@@ -686,9 +692,9 @@ async function main() {
     // Resolve recipientUserId if user was found during planning
     if (row.walletResolved) {
       try {
-        const xdcAddr = 'xdc' + row.contributorAddress.slice(2);
+        const xdcAddr = ('xdc' + row.contributorAddress.slice(2)).toLowerCase();
         const user = await storage.getUserByWalletAddress(xdcAddr)
-          || await storage.getUserByWalletAddress(row.contributorAddress);
+          || await storage.getUserByWalletAddress(row.contributorAddress.toLowerCase());
         insertRow.recipientUserId = user?.id ?? null;
       } catch {
         insertRow.recipientUserId = null;
