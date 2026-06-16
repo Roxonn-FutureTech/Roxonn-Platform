@@ -1,6 +1,6 @@
 import { Router, type Request, Response } from 'express';
 import { db, users } from '../db';
-import { requireAuth, csrfProtection, requireClient, requireDeveloper } from '../auth';
+import { requireAuth, csrfProtection, requireClient, requireDeveloper, isAdminUser } from '../auth';
 import { eq, and, desc, sql, inArray, or } from 'drizzle-orm';
 import { ZodError } from 'zod';
 import {
@@ -403,8 +403,7 @@ router.get('/submissions', requireAuth, async (req: Request, res: Response) => {
     }
     
     // filter by user's own submissions or bounties they manage (unless admin)
-    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    if (user?.role !== 'admin') {
+    if (!isAdminUser(req)) {
       const userRepos = await db
         .select()
         .from(registeredRepositories)
@@ -492,9 +491,8 @@ router.get('/submissions/:id', requireAuth, async (req: Request, res: Response) 
     }
     
     const isPoolManager = repo.userId === userId;
-    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    const isAdmin = user?.role === 'admin';
-    
+    const isAdmin = isAdminUser(req);
+
     if (!isContributor && !isPoolManager && !isAdmin) {
       return res.status(403).json({ error: 'Not authorized to view this submission' });
     }
@@ -633,9 +631,8 @@ router.patch('/submissions/:id/review', requireAuth, requireClient, csrfProtecti
     }
     
     const isPoolManager = repo.userId === userId;
-    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    const isAdmin = user?.role === 'admin';
-    
+    const isAdmin = isAdminUser(req);
+
     if (!isPoolManager && !isAdmin) {
       return res.status(403).json({ error: 'Not authorized to review this submission' });
     }

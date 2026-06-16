@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   requireAuth,
   requireVSCodeAuth,
@@ -6,6 +6,8 @@ import {
   requireRole,
   requireDeveloper,
   requireClient,
+  requireAdmin,
+  isAdminUser,
   PROFILE_TYPES,
   PROFILE_DISPLAY_NAMES
 } from '../auth';
@@ -45,6 +47,32 @@ vi.mock('drizzle-orm', () => ({
 vi.mock('../../shared/schema', () => ({
   users: {
     id: 'id',
+  },
+}));
+
+// Mock modules that throw at import time when env vars are missing
+vi.mock('../tatum', () => ({
+  generateWallet: vi.fn(),
+}));
+
+vi.mock('../blockchain', () => ({
+  blockchain: {
+    registerUser: vi.fn(),
+  },
+}));
+
+vi.mock('../aws', () => ({
+  getWalletSecret: vi.fn(),
+  storeWalletSecret: vi.fn(),
+}));
+
+vi.mock('../zoho', () => ({
+  createZohoLead: vi.fn(),
+}));
+
+vi.mock('../storage', () => ({
+  DatabaseStorage: class {
+    sessionStore = {};
   },
 }));
 
@@ -500,6 +528,115 @@ describe('Auth Middleware', () => {
 
       expect(mockResponse.status).toHaveBeenCalledWith(403);
       expect(mockNext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('requireAdmin', () => {
+    const SAVED_ADMIN_USERNAMES = process.env.ADMIN_USERNAMES;
+
+    afterEach(() => {
+      // Restore ADMIN_USERNAMES to its original value after each test
+      if (SAVED_ADMIN_USERNAMES === undefined) {
+        delete process.env.ADMIN_USERNAMES;
+      } else {
+        process.env.ADMIN_USERNAMES = SAVED_ADMIN_USERNAMES;
+      }
+    });
+
+    it('Test 1: returns 401 when req.user is absent', () => {
+      mockRequest.user = undefined;
+      delete process.env.ADMIN_USERNAMES;
+
+      requireAdmin(mockRequest as Request, mockResponse as Response, mockNext);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(401);
+      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Authentication required' });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('Test 2: returns 503 when ADMIN_USERNAMES is unset (fail-closed, no throw)', () => {
+      mockRequest.user = { id: 1, username: 'dineshroxonn', githubAccessToken: 'tok' } as any;
+      delete process.env.ADMIN_USERNAMES;
+
+      requireAdmin(mockRequest as Request, mockResponse as Response, mockNext);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(503);
+      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Admin access not configured' });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('Test 3: returns 403 when username NOT in ADMIN_USERNAMES list', () => {
+      mockRequest.user = { id: 2, username: 'unknownuser', githubAccessToken: 'tok' } as any;
+      process.env.ADMIN_USERNAMES = 'dineshroxonn,dineshrampalli';
+
+      requireAdmin(mockRequest as Request, mockResponse as Response, mockNext);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(403);
+      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Admin access required' });
+      expect(mockNext).not.toHaveBeenCalled();
+    });
+
+    it('Test 4: calls next() when username IS in ADMIN_USERNAMES (case-insensitive)', () => {
+      // 'DineshRoxonn' should match list entry 'dineshroxonn'
+      mockRequest.user = { id: 1, username: 'DineshRoxonn', githubAccessToken: 'tok' } as any;
+      process.env.ADMIN_USERNAMES = 'dineshroxonn,dineshrampalli';
+
+      requireAdmin(mockRequest as Request, mockResponse as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+      expect(mockResponse.status).not.toHaveBeenCalled();
+    });
+
+    it('Test 4b: calls next() for second admin in list', () => {
+      mockRequest.user = { id: 3, username: 'dineshrampalli', githubAccessToken: 'tok' } as any;
+      process.env.ADMIN_USERNAMES = 'dineshroxonn,dineshrampalli';
+
+      requireAdmin(mockRequest as Request, mockResponse as Response, mockNext);
+
+      expect(mockNext).toHaveBeenCalled();
+      expect(mockResponse.status).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('isAdminUser', () => {
+    const SAVED_ADMIN_USERNAMES = process.env.ADMIN_USERNAMES;
+
+    afterEach(() => {
+      if (SAVED_ADMIN_USERNAMES === undefined) {
+        delete process.env.ADMIN_USERNAMES;
+      } else {
+        process.env.ADMIN_USERNAMES = SAVED_ADMIN_USERNAMES;
+      }
+    });
+
+    it('returns false when req.user is absent', () => {
+      mockRequest.user = undefined;
+      delete process.env.ADMIN_USERNAMES;
+
+      expect(isAdminUser(mockRequest as Request)).toBe(false);
+    });
+
+    it('returns false when ADMIN_USERNAMES is unset (no throw)', () => {
+      mockRequest.user = { id: 1, username: 'dineshroxonn', githubAccessToken: 'tok' } as any;
+      delete process.env.ADMIN_USERNAMES;
+
+      // Must not throw
+      expect(() => isAdminUser(mockRequest as Request)).not.toThrow();
+      expect(isAdminUser(mockRequest as Request)).toBe(false);
+    });
+
+    it('returns false when username is NOT in list', () => {
+      mockRequest.user = { id: 2, username: 'unknownuser', githubAccessToken: 'tok' } as any;
+      process.env.ADMIN_USERNAMES = 'dineshroxonn,dineshrampalli';
+
+      expect(isAdminUser(mockRequest as Request)).toBe(false);
+    });
+
+    it('returns true when username IS in list (case-insensitive)', () => {
+      mockRequest.user = { id: 1, username: 'DINESHROXONN', githubAccessToken: 'tok' } as any;
+      process.env.ADMIN_USERNAMES = 'dineshroxonn,dineshrampalli';
+
+      expect(isAdminUser(mockRequest as Request)).toBe(true);
     });
   });
 });
