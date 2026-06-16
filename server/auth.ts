@@ -69,7 +69,7 @@ export const requireAdmin = (req: Request, res: Response, next: NextFunction) =>
   }
 
   const admins = adminUsernames.split(',').map(u => u.trim().toLowerCase());
-  if (!admins.includes(req.user.username.toLowerCase())) {
+  if (!admins.includes(req.user.username?.toLowerCase())) {
     log(`Admin access denied for user: ${req.user.username}`, 'admin-SECURITY');
     return res.status(403).json({ error: 'Admin access required' });
   }
@@ -86,7 +86,7 @@ export function isAdminUser(req: Request): boolean {
   const adminUsernames = process.env.ADMIN_USERNAMES;
   if (!adminUsernames) return false;
   const admins = adminUsernames.split(',').map(u => u.trim().toLowerCase());
-  return admins.includes(req.user.username.toLowerCase());
+  return admins.includes(req.user.username?.toLowerCase());
 }
 
 export const requireAuth = (req: Request, res: Response, next: NextFunction) => {
