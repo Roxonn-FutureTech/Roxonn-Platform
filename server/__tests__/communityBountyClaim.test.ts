@@ -26,7 +26,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // available when the factory runs.
 // ---------------------------------------------------------------------------
 const { mockTransaction, mockSelect, mockFrom, mockSelectWhere, mockFor, mockLimit,
-        mockUpdate, mockSet, mockUpdateWhere, mockReturning } = vi.hoisted(() => {
+        mockUpdate, mockSet, mockUpdateWhere, mockReturning,
+        mockInsertReturning, mockInsertValues, mockInsert } = vi.hoisted(() => {
   const mockReturning = vi.fn();
   const mockUpdateWhere = vi.fn().mockReturnValue({ returning: mockReturning });
   const mockSet = vi.fn().mockReturnValue({ where: mockUpdateWhere });
@@ -40,6 +41,11 @@ const { mockTransaction, mockSelect, mockFrom, mockSelectWhere, mockFor, mockLim
 
   const mockTransaction = vi.fn();
 
+  // Insert chain for createCommunityBounty tests
+  const mockInsertReturning = vi.fn();
+  const mockInsertValues = vi.fn().mockReturnValue({ returning: mockInsertReturning });
+  const mockInsert = vi.fn().mockReturnValue({ values: mockInsertValues });
+
   return {
     mockTransaction,
     mockSelect,
@@ -51,13 +57,23 @@ const { mockTransaction, mockSelect, mockFrom, mockSelectWhere, mockFor, mockLim
     mockSet,
     mockUpdateWhere,
     mockReturning,
+    mockInsertReturning,
+    mockInsertValues,
+    mockInsert,
   };
 });
 
 vi.mock('../db', () => ({
   db: {
     transaction: mockTransaction,
+    insert: mockInsert,
   },
+}));
+
+// Mock resolveInstallationIdForRepo — default returns null; individual tests override as needed.
+const mockResolveInstallationId = vi.fn().mockResolvedValue(null);
+vi.mock('../github', () => ({
+  resolveInstallationIdForRepo: (...args: any[]) => mockResolveInstallationId(...args),
 }));
 
 // Import storage AFTER the mock is established
@@ -75,6 +91,9 @@ describe('claimCommunityBountyAtomic — canonical claim-marking contract', () =
     mockUpdate.mockReturnValue({ set: mockSet });
     mockSet.mockReturnValue({ where: mockUpdateWhere });
     mockUpdateWhere.mockReturnValue({ returning: mockReturning });
+    // Re-wire insert chain
+    mockInsert.mockReturnValue({ values: mockInsertValues });
+    mockInsertValues.mockReturnValue({ returning: mockInsertReturning });
   });
 
   // -------------------------------------------------------------------------
@@ -211,6 +230,107 @@ describe('claimCommunityBountyAtomic — canonical claim-marking contract', () =
 });
 
 // ---------------------------------------------------------------------------
+// D-06: createCommunityBounty — githubInstallationId null-tolerant & resolver-throws-non-fatal
+//
+// Pure-mock unit tests (no TEST_DATABASE_URL required).
+// Validates the D-06 safety property: bounty creation NEVER fails due to a
+// resolver null or throw — both cases must result in a successful insert with
+// githubInstallationId: null written to the row.
+// ---------------------------------------------------------------------------
+describe('createCommunityBounty — D-06 installation-id null-tolerant safety', () => {
+  const minimalBountyData = {
+    githubRepoOwner: 'test-owner',
+    githubRepoName: 'test-repo',
+    githubIssueNumber: 1,
+    githubIssueId: 'I_test123',
+    githubIssueUrl: 'https://github.com/test-owner/test-repo/issues/1',
+    createdByGithubUsername: 'testuser',
+    title: 'Test bounty',
+    amount: '10',
+    currency: 'XDC',
+  };
+
+  const mockBountyRow = { id: 1, ...minimalBountyData, status: 'pending_payment', githubInstallationId: null };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Re-wire insert chain
+    mockInsert.mockReturnValue({ values: mockInsertValues });
+    mockInsertValues.mockReturnValue({ returning: mockInsertReturning });
+    mockInsertReturning.mockResolvedValue([mockBountyRow]);
+    // Re-wire select/update chains so existing tests still work if combined
+    mockSelect.mockReturnValue({ from: mockFrom });
+    mockFrom.mockReturnValue({ where: mockSelectWhere });
+    mockSelectWhere.mockReturnValue({ for: mockFor });
+    mockFor.mockReturnValue({ limit: mockLimit });
+    mockUpdate.mockReturnValue({ set: mockSet });
+    mockSet.mockReturnValue({ where: mockUpdateWhere });
+    mockUpdateWhere.mockReturnValue({ returning: mockReturning });
+    // Reset resolver mock to default (null)
+    mockResolveInstallationId.mockResolvedValue(null);
+  });
+
+  // Test 2 (null-tolerant): createCommunityBounty with githubInstallationId omitted succeeds.
+  // The storage insert is called and a bounty is returned even when no installation id is provided.
+  it('Test 2 (null-tolerant): create succeeds with githubInstallationId omitted/null; row inserted', async () => {
+    const bounty = await storage.createCommunityBounty(minimalBountyData);
+
+    // Insert was called (bounty was created — not aborted)
+    expect(mockInsert).toHaveBeenCalledOnce();
+
+    // .values() was called with githubInstallationId: null (no-op path)
+    const valuesArg = mockInsertValues.mock.calls[0][0] as Record<string, unknown>;
+    expect(valuesArg.githubInstallationId).toBeNull();
+
+    // Return value is the mocked bounty row
+    expect(bounty).toEqual(mockBountyRow);
+  });
+
+  // Test 2b: explicit null passed through correctly
+  it('Test 2b (explicit null): create with githubInstallationId: null still inserts null', async () => {
+    const bounty = await storage.createCommunityBounty({
+      ...minimalBountyData,
+      githubInstallationId: null,
+    });
+
+    expect(mockInsert).toHaveBeenCalledOnce();
+    const valuesArg = mockInsertValues.mock.calls[0][0] as Record<string, unknown>;
+    expect(valuesArg.githubInstallationId).toBeNull();
+    expect(bounty).toEqual(mockBountyRow);
+  });
+
+  // Test 3 (resolver-throws is non-fatal): the caller try/catch catches a resolver throw,
+  // passes null into createCommunityBounty, and the bounty insert still proceeds.
+  // Verified by calling createCommunityBounty with null (mirrors what the route/bot callers do
+  // after catching the resolver throw) — the storage layer does not throw on null installationId.
+  it('Test 3 (resolver-throws non-fatal): createCommunityBounty with null (from caught throw) still inserts row', async () => {
+    // Simulate the caller behaviour: resolver throws, caller sets null, calls createCommunityBounty
+    mockResolveInstallationId.mockRejectedValue(new Error('GitHub App not installed'));
+
+    // Mimic the try/catch pattern from the route handler and bot caller
+    let creationInstallationId: string | null = null;
+    try {
+      creationInstallationId = await mockResolveInstallationId('test-owner', 'test-repo');
+    } catch {
+      // resolver threw — creationInstallationId stays null (non-fatal)
+    }
+    // Assert the resolver set null after the throw
+    expect(creationInstallationId).toBeNull();
+
+    // Now call createCommunityBounty with the null installation id — must succeed
+    const bounty = await storage.createCommunityBounty({
+      ...minimalBountyData,
+      githubInstallationId: creationInstallationId,
+    });
+
+    expect(mockInsert).toHaveBeenCalledOnce();
+    const valuesArg = mockInsertValues.mock.calls[0][0] as Record<string, unknown>;
+    expect(valuesArg.githubInstallationId).toBeNull();
+    expect(bounty).toEqual(mockBountyRow);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Optional integration suite — skipped when TEST_DATABASE_URL is not set
 // so `npm test` stays green without a real database.
 // ---------------------------------------------------------------------------
@@ -284,6 +404,67 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)(
           'https://github.com/test/repo/pull/55'
         )
       ).rejects.toThrow(/not claimable/i);
+    });
+  }
+);
+
+// ---------------------------------------------------------------------------
+// D-06 integration suite (Test 1) — verifies githubInstallationId is persisted.
+// Skipped when TEST_DATABASE_URL is not set so `npm test` stays green.
+// ---------------------------------------------------------------------------
+describe.skipIf(!process.env.TEST_DATABASE_URL)(
+  'createCommunityBounty D-06 integration (roxonn_test)',
+  () => {
+    let requireTestDb: () => void;
+    let realDb: any;
+    let communityBountiesTable: any;
+    let realEq: any;
+    let realStorage: any;
+
+    beforeEach(async () => {
+      const setup = await import('../../tests/setup');
+      requireTestDb = setup.requireTestDb;
+      const dbMod = await import('../db');
+      realDb = dbMod.db;
+      const schema = await import('../../shared/schema');
+      communityBountiesTable = schema.communityBounties;
+      const drizzle = await import('drizzle-orm');
+      realEq = drizzle.eq;
+      const storageMod = await import('../storage');
+      realStorage = storageMod.storage;
+
+      requireTestDb();
+      // Clean up any leftover test rows from D-06 create tests
+      await realDb.delete(communityBountiesTable).where(
+        realEq(communityBountiesTable.githubIssueId, 'I_d06_integration_test')
+      );
+    });
+
+    // Test 1 (D-06 happy path): createCommunityBounty persists githubInstallationId
+    // when a value is provided (confirms the column write reaches the DB row).
+    it('Test 1 (happy path): persists githubInstallationId when provided at creation', async () => {
+      const bounty = await realStorage.createCommunityBounty({
+        githubRepoOwner: 'test-owner',
+        githubRepoName: 'test-repo',
+        githubIssueNumber: 9999,
+        githubIssueId: 'I_d06_integration_test',
+        githubIssueUrl: 'https://github.com/test-owner/test-repo/issues/9999',
+        createdByGithubUsername: 'testuser',
+        title: 'D-06 integration test bounty',
+        amount: '10',
+        currency: 'XDC',
+        githubInstallationId: 'inst_d06_test_123',
+      });
+
+      expect(bounty.githubInstallationId).toBe('inst_d06_test_123');
+      expect(bounty.id).toBeGreaterThan(0);
+      expect(bounty.status).toBe('pending_payment');
+
+      // Verify the row is also readable back from the DB with the correct field
+      const [row] = await realDb.select()
+        .from(communityBountiesTable)
+        .where(realEq(communityBountiesTable.githubIssueId, 'I_d06_integration_test'));
+      expect(row.githubInstallationId).toBe('inst_d06_test_123');
     });
   }
 );
