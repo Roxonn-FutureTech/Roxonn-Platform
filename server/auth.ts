@@ -54,6 +54,41 @@ declare global {
   }
 }
 
+// Admin check middleware — SECURITY: fail-closed, username-list, no hardcoded fallback.
+// Returns 401 when unauthenticated, 503 when ADMIN_USERNAMES unset, 403 when not in list.
+// The server MUST NOT crash at boot over admin misconfig (single-box prod, D-04) — 503 only.
+export const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const adminUsernames = process.env.ADMIN_USERNAMES;
+  if (!adminUsernames) {
+    log('SECURITY WARNING: ADMIN_USERNAMES env var not set', 'admin-SECURITY');
+    return res.status(503).json({ error: 'Admin access not configured' });
+  }
+
+  const admins = adminUsernames.split(',').map(u => u.trim().toLowerCase());
+  if (!admins.includes(req.user.username.toLowerCase())) {
+    log(`Admin access denied for user: ${req.user.username}`, 'admin-SECURITY');
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  next();
+};
+
+// Inline helper for mixed-access routes where route-level requireAdmin would block
+// legitimate non-admin users (e.g., poolmanagers who own the resource).
+// Returns true ONLY when req.user is set AND ADMIN_USERNAMES is configured AND username matches.
+// Never throws — always returns boolean.
+export function isAdminUser(req: Request): boolean {
+  if (!req.user) return false;
+  const adminUsernames = process.env.ADMIN_USERNAMES;
+  if (!adminUsernames) return false;
+  const admins = adminUsernames.split(',').map(u => u.trim().toLowerCase());
+  return admins.includes(req.user.username.toLowerCase());
+}
+
 export const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   if (!req.user) {
     return res.status(401).json({ error: "Unauthorized" });
@@ -267,6 +302,12 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
 }
 
 export function setupAuth(app: Application) {
+  // D-04: One-time boot warning when ADMIN_USERNAMES is unset.
+  // Admin endpoints will return 503 until the env var is configured, but the server stays up.
+  if (!process.env.ADMIN_USERNAMES) {
+    log('SECURITY WARNING: ADMIN_USERNAMES is not set — all admin endpoints are disabled until it is configured', 'admin-SECURITY');
+  }
+
   // Session middleware
   app.use(
     session({
