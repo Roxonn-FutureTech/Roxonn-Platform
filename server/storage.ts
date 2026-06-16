@@ -827,6 +827,7 @@ export class DatabaseStorage implements IStorage {
     amount: string;
     currency: string;
     expiresAt?: Date;
+    githubInstallationId?: string | null;
   }): Promise<any> {
     try {
       log(`Creating community bounty for issue #${data.githubIssueNumber} in ${data.githubRepoOwner}/${data.githubRepoName}`, 'storage');
@@ -847,6 +848,7 @@ export class DatabaseStorage implements IStorage {
         amount: data.amount,
         currency: data.currency,
         expiresAt: data.expiresAt || null,
+        githubInstallationId: data.githubInstallationId ?? null,
         status: 'pending_payment',
         paymentStatus: 'pending',
         // Add fee breakdown fields
