@@ -165,6 +165,18 @@ router.post(
           })
         : undefined;
 
+      // D-06: best-effort installation-id capture at creation (mirrors FUND-03 funding-time pattern).
+      // MUST NOT fail the create if the resolver throws or returns null.
+      let creationInstallationId: string | null = null;
+      try {
+        creationInstallationId = await resolveInstallationIdForRepo(
+          validatedData.githubRepoOwner,
+          validatedData.githubRepoName
+        );
+      } catch (installErr: any) {
+        log(`Installation-id lookup failed at creation (non-fatal): ${installErr.message}`, 'community-bounties');
+      }
+
       // Create bounty in database
       // WHY STATUS pending_payment: User hasn't paid yet (set automatically by createCommunityBounty)
       const bounty = await storage.createCommunityBounty({
@@ -179,7 +191,8 @@ router.post(
         description: sanitizedDescription,
         amount: validatedData.amount,
         currency: validatedData.currency,
-        expiresAt: validatedData.expiresAt
+        expiresAt: validatedData.expiresAt,
+        githubInstallationId: creationInstallationId,
       });
 
       log(`Community bounty ${bounty.id} created in DB. Status: pending_payment`, 'community-bounties');

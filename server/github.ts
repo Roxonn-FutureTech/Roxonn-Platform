@@ -1833,6 +1833,15 @@ ${existingBounty.status === 'funded' ? 'This bounty is active and ready to claim
 
     // Create pending bounty in database
     try {
+      // D-06: best-effort installation-id capture at creation (mirrors FUND-03 funding-time pattern).
+      // MUST NOT fail the create if the resolver throws or returns null.
+      let creationInstallationId: string | null = null;
+      try {
+        creationInstallationId = await resolveInstallationIdForRepo(owner, repo);
+      } catch (installErr: any) {
+        log(`Installation-id lookup failed at creation (non-fatal): ${installErr.message}`, 'github');
+      }
+
       const bounty = await storage.createCommunityBounty({
         githubRepoOwner: owner,
         githubRepoName: repo,
@@ -1845,6 +1854,7 @@ ${existingBounty.status === 'funded' ? 'This bounty is active and ready to claim
         description: sanitizedIssue.body?.substring(0, 500) || null,
         amount: command.amount,
         currency: command.currency,
+        githubInstallationId: creationInstallationId,
       });
 
       // Generate payment links (placeholder URLs for now - will implement in Phase 5)
