@@ -1,0 +1,4 @@
+-- Add documentation
+COMMENT ON COLUMN community_bounties.blockchain_bounty_id IS 'On-chain bounty ID from CommunityBountyEscrow.sol, used by relayer to complete payouts';
+-- Add index for performance
+CREATE INDEX IF NOT EXISTS idx_blockchain_bounty_id ON community_bounties(blockchain_bounty_id);
