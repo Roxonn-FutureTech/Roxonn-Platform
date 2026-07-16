@@ -1,0 +1,69 @@
+name: Roxonn GitHub Bot
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [closed]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  auto-comment:
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post Welcome Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const isBounty = context.payload.issue.labels?.some(l => 
+              l.name.toLowerCase().includes('bounty')
+            );
+            
+            if (isBounty) {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: "👋 Welcome to Roxonn Platform! \n\nThis issue has a bounty attached. To claim it, comment `/bounty`, `/attempt` or `@roxonn status`. \n\nMake sure your Roxonn account is linked to your GitHub. Once you submit a PR and it's merged, the payout will be handled automatically! \n\nHappy coding! 🚀"
+              });
+            }
+
+  auto-payout:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Roxonn Auto-Payout Webhook
+        uses: actions/github-script@v7
+        env:
+          ROXONN_WEBHOOK_URL: ${{ secrets.ROXONN_WEBHOOK_URL || 'https://api.roxonn.com/webhook/github/app' }}
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const repo = context.payload.repository.full_name;
+            const webhookUrl = process.env.ROXONN_WEBHOOK_URL;
+            
+            console.log(`PR #${pr.number} merged by ${pr.user.login} in ${repo}`);
+            
+            try {
+              const prBody = pr.body || '';
+              const regex = /\b(?:fix|fixes|close|closes|resolve|resolves)\b\s+#(\d+)/gi;
+              const matches = [...prBody.matchAll(regex)];
+              
+              if (matches.length > 0) {
+                const issueNumbers = [...new Set(matches.map(m => Number(m[1])))];
+                for (const issueNumber of issueNumbers) {
+                  await github.rest.issues.createComment({
+                    issue_number: issueNumber,
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    body: `🎉 **PR Merged!** \n\n@${pr.user.login} Your PR #${pr.number} has been merged. \n\nIf this was a valid bounty claim, the auto-payout process has been initiated by the Roxonn Relayer. Check your connected Base USDC wallet!`
+                  });
+                }
+              }
+            } catch (err) {
+              console.error('Error executing auto-payout callback:', err);
+            }
