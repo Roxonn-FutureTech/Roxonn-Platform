@@ -232,6 +232,54 @@ export async function getInstallationAccessToken(installationId: string): Promis
   }
 }
 
+/**
+ * Resolve the GitHub App installation ID for a repository.
+ *
+ * WHY: Community bounties are created on repos that are NOT registered on the
+ * platform, so there is no stored installation ID to fall back on. The relayer
+ * still needs one to call the GitHub API when verifying a PR merge. The App's
+ * own JWT can look this up directly from GitHub.
+ *
+ * @returns The installation ID as a string, or null if the App is not installed
+ *          on the repository (or the lookup failed).
+ */
+export async function getInstallationIdForRepo(owner: string, repo: string): Promise<string | null> {
+  if (!config.githubAppId || !config.githubAppPrivateKey) {
+    log('Error: Missing GitHub App credentials for installation lookup.', 'github-auth');
+    return null;
+  }
+
+  // SSRF Protection
+  if (!isValidGitHubOwner(owner) || !isValidGitHubRepo(repo)) {
+    log(`Invalid repo format for installation lookup: ${owner}/${repo}`, 'github-auth');
+    return null;
+  }
+
+  try {
+    // Authenticate as the App itself (JWT), not as an installation
+    const auth = createAppAuth({
+      appId: config.githubAppId,
+      privateKey: config.githubAppPrivateKey,
+    });
+    const appAuthentication = await auth({ type: 'app' });
+
+    const url = buildSafeGitHubUrl('/repos/{owner}/{repo}/installation', { owner, repo });
+    const response = await axios.get(url, { headers: getGitHubApiHeaders(appAuthentication.token) });
+
+    const installationId = response.data?.id;
+    if (!installationId) {
+      log(`No installation ID returned for ${owner}/${repo}`, 'github-auth');
+      return null;
+    }
+
+    log(`Resolved installation ID ${installationId} for ${owner}/${repo}`, 'github-auth');
+    return String(installationId);
+  } catch (error: any) {
+    log(`Error resolving installation ID for ${owner}/${repo}: ${error.message}`, 'github-auth');
+    return null;
+  }
+}
+
 export async function getOrgRepos(req: Request, res: Response) {
   try {
     const page = parseInt(req.query.page as string) || 1;
