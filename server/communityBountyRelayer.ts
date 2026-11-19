@@ -32,7 +32,7 @@
 
 import { storage } from './storage';
 import { blockchain } from './blockchain';
-import { verifyPRMergedAndClosesIssue } from './github';
+import { verifyPRMergedAndClosesIssue, getInstallationIdForRepo } from './github';
 import { log } from './utils';
 
 /**
@@ -90,11 +90,13 @@ async function processClaimedBounty(bountyId: number): Promise<void> {
     // WHY: Ensure PR was actually merged before paying out bounty
     log(`Verifying PR #${bounty.claimedPrNumber} merged and closes issue #${bounty.githubIssueNumber} in ${bounty.githubRepoOwner}/${bounty.githubRepoName}`, 'relayer');
 
-    // WHY INSTALLATION ID: Community bounties may be on unregistered repos
-    // We need to get installation ID for the repo to use GitHub App auth
-    // For now, we'll assume the repo has our GitHub App installed
-    // TODO: Add installation ID lookup or store it during bounty creation
-    const installationId = bounty.githubInstallationId;
+    // WHY INSTALLATION ID: Community bounties may be on unregistered repos, so
+    // there is no installation ID stored alongside the bounty. Resolve it from
+    // GitHub using the App's own JWT instead.
+    const installationId = await getInstallationIdForRepo(
+      bounty.githubRepoOwner,
+      bounty.githubRepoName
+    );
     if (!installationId) {
       log(`Bounty ${bountyId} missing GitHub installation ID. Cannot verify PR.`, 'relayer-ERROR');
       await storage.updateCommunityBounty(bountyId, {
